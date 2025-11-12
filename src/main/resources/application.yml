@@ -1,0 +1,499 @@
+# ============================================================================
+# CONFIGURACIÓN PRINCIPAL - TASK MANAGEMENT API
+# Spring Boot 3.5.7 + PostgreSQL 18 + Java 21
+# ============================================================================
+#
+# Este archivo contiene la configuración completa de la aplicación con
+# explicaciones detalladas sobre performance, seguridad y mejores prácticas.
+#
+# Perfiles disponibles:
+# - default: Desarrollo local (este perfil)
+# - dev: Desarrollo con recreación de esquema
+# - test: Testing automatizado
+# - prod: Producción (variables de entorno)
+
+spring:
+  application:
+    name: task-management-api
+    # Nombre de la aplicación usado en logs, métricas y monitoreo
+
+  # ==========================================================================
+  # CONFIGURACIÓN DE BASE DE DATOS - POSTGRESQL 18
+  # ==========================================================================
+  datasource:
+    # URL de conexión JDBC
+    # Formato: jdbc:postgresql://[host]:[puerto]/[nombre_bd]?[parámetros]
+    url: jdbc:postgresql://localhost:5432/taskmanagement_db
+    username: postgres
+    password: postgres
+    driver-class-name: org.postgresql.Driver
+
+    # SEGURIDAD: En producción, NUNCA hardcodear credenciales
+    # Usar variables de entorno o servicios de gestión de secretos
+
+    # -------------------------------------------------------------------------
+    # HIKARICP - POOL DE CONEXIONES
+    # -------------------------------------------------------------------------
+    # HikariCP es el pool de conexiones por defecto en Spring Boot
+    # Optimizado para alta performance y baja latencia
+    hikari:
+      # PERFORMANCE: Número máximo de conexiones en el pool
+      # Fórmula recomendada: ((core_count * 2) + effective_spindle_count)
+      # Para aplicaciones típicas: 10-20 conexiones es suficiente
+      # Más conexiones NO significa mejor performance
+      maximum-pool-size: 20
+
+      # PERFORMANCE: Conexiones idle mínimas mantenidas
+      # Valor recomendado: mismo que maximum-pool-size para carga estable
+      # o 50% de maximum-pool-size para carga variable
+      minimum-idle: 10
+
+      # PERFORMANCE: Timeout para obtener una conexión del pool (ms)
+      # Si no hay conexiones disponibles en este tiempo, lanza excepción
+      # Default: 30000ms (30s) - Valor más bajo detecta problemas antes
+      connection-timeout: 20000
+
+      # PERFORMANCE: Tiempo máximo que una conexión puede estar idle (ms)
+      # Después de este tiempo, la conexión se cierra si hay más de minimum-idle
+      # Default: 600000ms (10min)
+      idle-timeout: 300000
+
+      # SEGURIDAD: Tiempo máximo de vida de una conexión (ms)
+      # Previene problemas con firewalls que cierran conexiones largas
+      # Debe ser menor que el timeout de la BD (PostgreSQL default: 2h)
+      # Recomendado: 30min a 1h
+      max-lifetime: 1800000
+
+      # PERFORMANCE: Tiempo que espera al cerrar el pool (ms)
+      # Da tiempo a que las conexiones activas terminen
+      connection-init-sql: SELECT 1
+
+      # SEGURIDAD: Query ejecutada cada vez que se obtiene una conexión
+      # Valida que la conexión sigue activa antes de usarla
+      connection-test-query: SELECT 1
+
+      # PERFORMANCE: Habilitar auto-commit
+      # true: Cada operación es una transacción (más seguro pero más lento)
+      # false: Control manual de transacciones (usar @Transactional)
+      auto-commit: true
+
+      # PERFORMANCE: Tamaño del statement cache preparado
+      # PostgreSQL JDBC soporta prepared statements para mejor performance
+      # 0 = deshabilitado, 250-500 = valor típico
+      # Solo útil si reutilizas muchas queries similares
+      # data-source-properties:
+      #   cachePrepStmts: true
+      #   prepStmtCacheSize: 250
+      #   prepStmtCacheSqlLimit: 2048
+
+      # MONITOREO: Nombre del pool para identificarlo en métricas
+      pool-name: TaskManagementHikariPool
+
+      # SEGURIDAD: Permitir suspension del pool
+      # Útil para mantenimiento sin reiniciar la aplicación
+      allow-pool-suspension: true
+
+      # MONITOREO: Habilitar JMX para monitoreo del pool
+      # Permite ver estadísticas del pool en tiempo real
+      register-mbeans: true
+
+      # PERFORMANCE: Leak detection threshold (ms)
+      # Detecta conexiones que no se cierran apropiadamente
+      # 0 = deshabilitado, 10000+ = habilitado
+      # Útil en desarrollo para detectar connection leaks
+      leak-detection-threshold: 60000
+
+  # ==========================================================================
+  # CONFIGURACIÓN DE JPA / HIBERNATE
+  # ==========================================================================
+  jpa:
+    # -------------------------------------------------------------------------
+    # GESTIÓN DEL ESQUEMA DE BASE DE DATOS
+    # -------------------------------------------------------------------------
+    hibernate:
+      # DDL (Data Definition Language) - Cómo gestionar el esquema
+      #
+      # OPCIONES:
+      # - none: No hace nada (usar con migrations como Flyway/Liquibase)
+      # - validate: Solo valida que el esquema coincide con las entidades
+      # - update: Actualiza el esquema (CUIDADO: no elimina columnas)
+      # - create: Crea el esquema desde cero (BORRA DATOS)
+      # - create-drop: Crea al iniciar, elimina al cerrar (solo testing)
+      #
+      # RECOMENDACIONES:
+      # - Desarrollo: update (para iterar rápido)
+      # - Testing: create-drop (esquema limpio cada vez)
+      # - Producción: validate o none (usar migrations)
+      ddl-auto: update
+
+      # PERFORMANCE: Estrategia de nomenclatura de tablas/columnas
+      # PhysicalNamingStrategy: convierte camelCase a snake_case
+      # Por ejemplo: userName -> user_name
+      naming:
+        physical-strategy: org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy
+        implicit-strategy: org.springframework.boot.orm.jpa.hibernate.SpringImplicitNamingStrategy
+
+    # -------------------------------------------------------------------------
+    # LOGGING Y DEBUGGING
+    # -------------------------------------------------------------------------
+    # DESARROLLO: Mostrar queries SQL en logs
+    # PRODUCCIÓN: Desactivar (usar logging level WARN)
+    show-sql: true
+
+    # DESARROLLO: Muestra los valores de los parámetros
+    # Útil para debugging pero impacta performance
+    properties:
+      # FORMATO DE QUERIES
+      hibernate:
+        # Formatea SQL para legibilidad
+        format_sql: true
+
+        # Agrega comentarios a las queries con información contextual
+        use_sql_comments: true
+
+        # DIALECTO DE BASE DE DATOS
+        # Dialecto específico para PostgreSQL
+        # Optimiza queries para PostgreSQL específicamente
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+        # PERFORMANCE: Batch processing
+        # Agrupa múltiples inserts/updates en una sola operación
+        # Mejora significativamente el rendimiento en operaciones masivas
+        jdbc:
+          batch_size: 20
+          # Ordena los inserts/updates para mejor batching
+          order_inserts: true
+          order_updates: true
+          # Agrupa por lotes los inserts
+          batch_versioned_data: true
+
+        # PERFORMANCE: Query plan cache
+        # Cachea planes de ejecución de queries
+        query:
+          plan_cache_max_size: 2048
+          plan_parameter_metadata_max_size: 128
+
+        # PERFORMANCE: Segunda caché (L2 Cache)
+        # Caché de entidades a nivel de SessionFactory
+        # Mejora performance en lecturas frecuentes
+        # Requiere configuración adicional por entidad
+        # cache:
+        #   use_second_level_cache: true
+        #   use_query_cache: true
+        #   region:
+        #     factory_class: org.hibernate.cache.jcache.JCacheRegionFactory
+
+        # SEGURIDAD: Validación de esquema
+        # Valida el esquema al inicio
+        # check_nullability: true
+
+        # PERFORMANCE: Fetch estrategia
+        # Controla cómo Hibernate carga relaciones
+        # max_fetch_depth: 3
+        # default_batch_fetch_size: 16
+
+        # MONITOREO: Estadísticas de Hibernate
+        # Habilita recolección de estadísticas (impacto mínimo en performance)
+        generate_statistics: true
+
+        # LOGGING: Slow query logging
+        # Registra queries lentas (tiempo en ms)
+        # session:
+        #   events:
+        #     log:
+        #       LOG_QUERIES_SLOWER_THAN_MS: 1000
+
+    # -------------------------------------------------------------------------
+    # PROPIEDADES JDBC AVANZADAS
+    # -------------------------------------------------------------------------
+    # Configuración adicional del driver PostgreSQL JDBC
+    # properties:
+    #   javax:
+    #     persistence:
+    #       query:
+    #         timeout: 10000  # Timeout de queries en ms
+
+# ==========================================================================
+# CONFIGURACIÓN DEL SERVIDOR WEB
+# ==========================================================================
+server:
+  # Puerto del servidor embebido Tomcat
+  port: ${SERVER_PORT:8080}
+
+  # Context path de la aplicación
+  # Todas las rutas serán: http://localhost:8080/api/v1/...
+  servlet:
+    context-path: /api/v1
+
+    # SEGURIDAD: Headers de respuesta HTTP
+    # session:
+    #   cookie:
+    #     http-only: true  # Previene XSS
+    #     secure: true     # Solo HTTPS (habilitar en producción)
+    #     same-site: strict  # Protección CSRF
+
+  # PERFORMANCE: Configuración de Tomcat
+  tomcat:
+    # Número de threads para manejar requests
+    threads:
+      max: 200        # Máximo de threads
+      min-spare: 10   # Threads mínimos en espera
+
+    # Tamaño máximo de request body
+    max-http-form-post-size: 10MB
+
+    # Timeout de conexión
+    connection-timeout: 20s
+
+    # PERFORMANCE: Compresión de respuestas
+    compression:
+      enabled: true
+      mime-types: text/html,text/xml,text/plain,text/css,text/javascript,application/javascript,application/json
+      min-response-size: 1024
+
+  # SEGURIDAD: Manejo de errores
+  error:
+    # No incluir stacktrace en respuestas de error en producción
+    include-stacktrace: on_param  # never en producción
+    include-message: always
+    include-binding-errors: always
+
+# ============================================================================
+# CONFIGURACIÓN DE LOGGING
+# ============================================================================
+logging:
+  # Patrón de formato de logs
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+    # file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+  # Niveles de log por paquete
+  # TRACE < DEBUG < INFO < WARN < ERROR
+  level:
+    # Nivel root (por defecto para todo)
+    root: INFO
+
+    # Nuestra aplicación
+    com.taskmanagement.api: DEBUG
+
+    # Spring Framework
+    org.springframework.web: INFO
+    org.springframework.security: DEBUG
+    org.springframework.boot: INFO
+
+    # Hibernate y JPA
+    org.hibernate.SQL: DEBUG                    # Muestra queries SQL
+    org.hibernate.type.descriptor.sql: TRACE    # Muestra parámetros de queries
+    org.hibernate.stat: DEBUG                   # Estadísticas de Hibernate
+    org.hibernate.engine.transaction: DEBUG     # Transacciones
+
+    # HikariCP
+    com.zaxxer.hikari: INFO                     # Pool de conexiones
+    com.zaxxer.hikari.HikariConfig: DEBUG       # Configuración del pool
+
+    # PostgreSQL Driver
+    org.postgresql: INFO
+
+  # (Opcional) Guardar logs en archivo
+  # file:
+  #   name: logs/task-management-api.log
+  #   max-size: 10MB
+  #   max-history: 30
+  #   total-size-cap: 1GB
+
+# ============================================================================
+# CONFIGURACIÓN DE ACTUATOR (MONITOREO Y MÉTRICAS)
+# ============================================================================
+# Descomentar si agregas: org.springframework.boot:spring-boot-starter-actuator
+#
+# management:
+#   endpoints:
+#     web:
+#       exposure:
+#         include: health,info,metrics,prometheus
+#       base-path: /actuator
+#   endpoint:
+#     health:
+#       show-details: when-authorized
+#   metrics:
+#     export:
+#       prometheus:
+#         enabled: true
+
+# ============================================================================
+# CONFIGURACIÓN PERSONALIZADA DE LA APLICACIÓN
+# ============================================================================
+# Puedes agregar propiedades custom aquí
+app:
+  name: Task Management API
+  version: 1.0.0
+  description: API REST para gestión de tareas
+
+  # Configuraciones de negocio
+  # max-tasks-per-user: 100
+  # task-expiration-days: 30
+
+---
+# ============================================================================
+# PERFIL: DESARROLLO (DEV)
+# ============================================================================
+# Activar: --spring.profiles.active=dev
+# Recrea el esquema en cada inicio (útil para desarrollo activo)
+
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/taskmanagement_db_dev
+    hikari:
+      maximum-pool-size: 5  # Menos conexiones en desarrollo
+      leak-detection-threshold: 30000  # Detección agresiva de leaks
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop  # Recrea esquema en cada inicio
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        generate_statistics: true
+
+logging:
+  level:
+    com.taskmanagement.api: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql: TRACE
+
+---
+# ============================================================================
+# PERFIL: TESTING (TEST)
+# ============================================================================
+# Activar: --spring.profiles.active=test
+# Optimizado para pruebas automatizadas
+
+spring:
+  config:
+    activate:
+      on-profile: test
+
+  datasource:
+    # Usar H2 en memoria para tests (más rápido)
+    # O PostgreSQL en contenedor de test
+    url: jdbc:postgresql://localhost:5432/taskmanagement_db_test
+    hikari:
+      maximum-pool-size: 5
+      connection-timeout: 5000
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop  # Esquema limpio para cada test
+    show-sql: false          # No contaminar logs de tests
+    properties:
+      hibernate:
+        format_sql: false
+        generate_statistics: false
+
+logging:
+  level:
+    root: WARN
+    com.taskmanagement.api: INFO
+    org.hibernate.SQL: WARN
+
+---
+# ============================================================================
+# PERFIL: PRODUCCIÓN (PROD)
+# ============================================================================
+# Activar: --spring.profiles.active=prod
+# TODAS las credenciales y configuraciones sensibles vienen de variables de entorno
+
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+  datasource:
+    # SEGURIDAD: Obtener configuración de variables de entorno
+    url: ${DATABASE_URL}
+    username: ${DATABASE_USERNAME}
+    password: ${DATABASE_PASSWORD}
+
+    hikari:
+      # PERFORMANCE: Configuración optimizada para producción
+      maximum-pool-size: ${DB_POOL_SIZE:20}
+      minimum-idle: ${DB_POOL_MIN_IDLE:10}
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      leak-detection-threshold: 0  # Desactivar en producción (overhead)
+
+      # SEGURIDAD: SSL para conexión a PostgreSQL
+      # data-source-properties:
+      #   ssl: true
+      #   sslmode: require
+
+  jpa:
+    hibernate:
+      # SEGURIDAD: Solo validar, NUNCA modificar esquema en producción
+      ddl-auto: validate
+    show-sql: false  # No loguear queries en producción
+    properties:
+      hibernate:
+        format_sql: false
+        generate_statistics: false  # Mínimo overhead en producción
+
+  # SEGURIDAD: Configuración segura del servidor
+  server:
+    port: ${PORT:8080}
+    error:
+      include-stacktrace: never    # Nunca exponer stacktraces
+      include-message: always
+    tomcat:
+      threads:
+        max: ${TOMCAT_THREADS_MAX:200}
+      connection-timeout: 20s
+
+# LOGGING: Nivel apropiado para producción
+logging:
+  level:
+    root: WARN
+    com.taskmanagement.api: INFO
+    org.hibernate.SQL: WARN
+    org.springframework: WARN
+
+  # Guardar logs en archivo en producción
+  file:
+    name: ${LOG_FILE:/var/log/task-management-api/application.log}
+    max-size: 100MB
+    max-history: 30
+
+# ============================================================================
+# NOTAS IMPORTANTES DE SEGURIDAD Y PERFORMANCE
+# ============================================================================
+#
+# SEGURIDAD:
+# 1. Nunca commitear credenciales en código fuente
+# 2. Usar variables de entorno o gestores de secretos (Vault, AWS Secrets Manager)
+# 3. Habilitar SSL/TLS para conexiones a PostgreSQL en producción
+# 4. Configurar pg_hba.conf apropiadamente
+# 5. Usar usuarios de BD con privilegios mínimos necesarios
+# 6. Implementar rate limiting y protección DDoS
+# 7. Mantener dependencias actualizadas
+# 8. Habilitar CORS solo para orígenes conocidos
+# 9. Implementar autenticación y autorización (Spring Security)
+# 10. Auditar y monitorear accesos a la BD
+#
+# PERFORMANCE:
+# 1. Ajustar pool de conexiones según carga real (no más de 20-30)
+# 2. Usar índices apropiados en PostgreSQL
+# 3. Habilitar prepared statement cache
+# 4. Usar batch processing para operaciones masivas
+# 5. Implementar paginación en endpoints que retornan listas
+# 6. Usar proyecciones o DTOs en lugar de entidades completas
+# 7. Implementar caché (Redis, Caffeine) para datos frecuentes
+# 8. Monitorear slow queries y optimizarlas
+# 9. Usar connection pooling apropiadamente
+# 10. Considerar read replicas para alta lectura
+#
+# ============================================================================

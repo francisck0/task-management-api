@@ -1,0 +1,234 @@
+# Docker Compose para Task Management API
+# Proporciona una forma fácil de levantar PostgreSQL 18 para desarrollo
+#
+# IMPORTANTE: Este archivo está configurado para DESARROLLO.
+# En producción, usar un servidor PostgreSQL administrado o configuración hardened.
+
+services:
+  # Servicio de PostgreSQL 18
+  # PostgreSQL 18 incluye mejoras en performance, particionado y seguridad
+  postgres:
+    image: postgres:18-alpine
+    container_name: taskmanager-postgres
+    restart: unless-stopped  # Reinicia automáticamente excepto si se detiene manualmente
+
+    environment:
+      # Configuración de la base de datos
+      POSTGRES_DB: ${POSTGRES_DB:-taskmanagement_db}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+
+      # IMPORTANTE: En producción, usar contraseñas fuertes y cambiar el usuario por defecto
+      # Considerar usar secrets de Docker en lugar de variables de entorno
+
+      # Configuraciones de performance y seguridad
+      # POSTGRES_INITDB_ARGS: Argumentos para inicializar la base de datos
+      # --encoding=UTF8: Codificación UTF-8 para soporte internacional completo
+      # --locale=es_ES.UTF-8: Locale español (cambiar según necesidad)
+      # --data-checksums: Habilita checksums para detectar corrupción de datos
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C --data-checksums"
+
+      # Zona horaria (ajustar según ubicación)
+      TZ: America/Mexico_City
+
+    ports:
+      # Puerto expuesto: host:contenedor
+      # En producción, considerar NO exponer el puerto y usar red interna
+      - "${POSTGRES_PORT:-5432}:5432"
+
+    volumes:
+      # Persistencia de datos
+      # Los datos se mantienen incluso si el contenedor se elimina
+      - postgres_data:/var/lib/postgresql/data
+
+      # (Opcional) Scripts de inicialización
+      # Cualquier archivo .sql o .sh en ./init-scripts se ejecutará al crear la BD
+      # - ./init-scripts:/docker-entrypoint-initdb.d
+
+      # (Opcional) Configuración personalizada de PostgreSQL
+      # - ./postgresql.conf:/etc/postgresql/postgresql.conf
+
+    # Configuraciones de performance del contenedor
+    # Limitar recursos para evitar que PostgreSQL consuma todos los recursos del host
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'      # Máximo 2 CPUs
+          memory: 2G       # Máximo 2GB de RAM
+        reservations:
+          cpus: '0.5'      # Mínimo 0.5 CPU reservado
+          memory: 512M     # Mínimo 512MB reservado
+
+    # Configuración adicional mediante command
+    # Optimizaciones de PostgreSQL para desarrollo
+    command:
+      - "postgres"
+      # shared_buffers: Memoria para cachear datos (25% de RAM disponible)
+      - "-c"
+      - "shared_buffers=512MB"
+      # effective_cache_size: Estimación de memoria disponible para cache (50-75% de RAM)
+      - "-c"
+      - "effective_cache_size=1536MB"
+      # work_mem: Memoria para operaciones de ordenamiento (RAM / max_connections / 4)
+      - "-c"
+      - "work_mem=16MB"
+      # maintenance_work_mem: Memoria para VACUUM, CREATE INDEX, etc.
+      - "-c"
+      - "maintenance_work_mem=128MB"
+      # max_connections: Número máximo de conexiones simultáneas
+      - "-c"
+      - "max_connections=100"
+      # checkpoint_completion_target: Distribuye escrituras del checkpoint
+      - "-c"
+      - "checkpoint_completion_target=0.9"
+      # wal_buffers: Buffers para Write-Ahead Logging
+      - "-c"
+      - "wal_buffers=16MB"
+      # random_page_cost: Ajuste para SSD (1.1) o HDD (4.0)
+      - "-c"
+      - "random_page_cost=1.1"
+      # effective_io_concurrency: Mayor en SSD (200), menor en HDD (2)
+      - "-c"
+      - "effective_io_concurrency=200"
+      # log_statement: Registra todas las sentencias SQL (útil en desarrollo)
+      - "-c"
+      - "log_statement=all"
+      # log_duration: Registra la duración de cada sentencia
+      - "-c"
+      - "log_duration=on"
+      # log_min_duration_statement: Solo registra queries lentas (en ms, -1 = deshabilitado)
+      - "-c"
+      - "log_min_duration_statement=1000"
+
+    networks:
+      - taskmanager-network
+
+    healthcheck:
+      # Verificación de salud del contenedor
+      # pg_isready verifica que PostgreSQL esté aceptando conexiones
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-taskmanagement_db}"]
+      interval: 10s        # Verifica cada 10 segundos
+      timeout: 5s          # Timeout de 5 segundos
+      retries: 5           # 5 intentos antes de marcar como unhealthy
+      start_period: 30s    # Espera 30 segundos antes de empezar healthchecks
+
+  # (Opcional) Servicio de pgAdmin para administrar PostgreSQL
+  # Interfaz web gráfica para gestionar bases de datos PostgreSQL
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: taskmanager-pgadmin
+    restart: unless-stopped
+
+    environment:
+      # Credenciales de acceso a pgAdmin
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@admin.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+
+      # IMPORTANTE: En producción, usar credenciales seguras
+      # y considerar autenticación con SSO
+
+      # Configuración adicional
+      PGADMIN_CONFIG_SERVER_MODE: 'False'  # Modo desktop (no requiere login múltiple)
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: 'False'
+
+    ports:
+      # Interfaz web accesible en http://localhost:5050
+      - "${PGADMIN_PORT:-5050}:80"
+
+    volumes:
+      # Persistencia de configuración de pgAdmin
+      - pgadmin_data:/var/lib/pgadmin
+
+    depends_on:
+      postgres:
+        condition: service_healthy  # Espera a que PostgreSQL esté healthy
+
+    networks:
+      - taskmanager-network
+
+    # pgAdmin puede consumir recursos, limitarlos en desarrollo
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+# Volúmenes para persistencia de datos
+# Los datos persisten incluso después de 'docker compose down'
+# Para eliminar datos: 'docker compose down -v'
+volumes:
+  postgres_data:
+    driver: local
+    # (Opcional) Especificar ubicación en el host
+    # driver_opts:
+    #   type: none
+    #   o: bind
+    #   device: ./postgres-data
+
+  pgadmin_data:
+    driver: local
+
+# Red personalizada para aislamiento
+# Bridge network permite comunicación entre contenedores
+networks:
+  taskmanager-network:
+    driver: bridge
+    # (Opcional) Configuración avanzada de red
+    # ipam:
+    #   config:
+    #     - subnet: 172.28.0.0/16
+
+# ============================================================================
+# COMANDOS ÚTILES
+# ============================================================================
+#
+# Iniciar servicios:
+#   docker compose up -d
+#
+# Ver logs en tiempo real:
+#   docker compose logs -f postgres
+#   docker compose logs -f pgadmin
+#
+# Ver estado de los servicios:
+#   docker compose ps
+#
+# Detener servicios (mantiene datos):
+#   docker compose stop
+#
+# Detener y eliminar contenedores (mantiene datos en volúmenes):
+#   docker compose down
+#
+# Eliminar TODO incluyendo volúmenes (¡CUIDADO! Borra los datos):
+#   docker compose down -v
+#
+# Reiniciar un servicio específico:
+#   docker compose restart postgres
+#
+# Ejecutar comando SQL en PostgreSQL:
+#   docker compose exec postgres psql -U postgres -d taskmanagement_db
+#
+# Backup de la base de datos:
+#   docker compose exec postgres pg_dump -U postgres taskmanagement_db > backup.sql
+#
+# Restaurar backup:
+#   docker compose exec -T postgres psql -U postgres taskmanagement_db < backup.sql
+#
+# Ver uso de recursos:
+#   docker stats taskmanager-postgres
+#
+# ============================================================================
+# SEGURIDAD - IMPORTANTE PARA PRODUCCIÓN
+# ============================================================================
+#
+# 1. Cambiar credenciales por defecto y usar contraseñas fuertes
+# 2. No exponer el puerto 5432 públicamente (remover sección ports)
+# 3. Usar Docker secrets en lugar de variables de entorno para passwords
+# 4. Implementar SSL/TLS para conexiones a PostgreSQL
+# 5. Configurar pg_hba.conf para restringir accesos
+# 6. Habilitar auditoría y logging adecuado
+# 7. Mantener PostgreSQL actualizado con parches de seguridad
+# 8. Implementar backups automáticos y encriptados
+# 9. Limitar recursos del contenedor apropiadamente
+# 10. Usar imágenes oficiales y verificar checksums
+#
+# ============================================================================
