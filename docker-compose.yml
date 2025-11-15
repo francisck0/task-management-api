@@ -1,10 +1,113 @@
-# Docker Compose para Task Management API
-# Proporciona una forma fácil de levantar PostgreSQL 18 para desarrollo
+# ============================================================================
+# DOCKER COMPOSE PARA TASK MANAGEMENT API
+# ============================================================================
+#
+# Este archivo orquesta múltiples servicios:
+# 1. app: Aplicación Spring Boot (Task Management API)
+# 2. postgres: Base de datos PostgreSQL 18
+# 3. pgadmin: Herramienta de administración de PostgreSQL (opcional)
 #
 # IMPORTANTE: Este archivo está configurado para DESARROLLO.
-# En producción, usar un servidor PostgreSQL administrado o configuración hardened.
+# En producción, usar configuración hardened con secrets, SSL/TLS, etc.
+#
+# ============================================================================
 
 services:
+  # ============================================================================
+  # SERVICIO: APLICACIÓN SPRING BOOT
+  # ============================================================================
+  app:
+    # Construir imagen desde Dockerfile en el directorio actual
+    build:
+      context: .              # Directorio donde está el Dockerfile
+      dockerfile: Dockerfile  # Nombre del Dockerfile
+      # (Opcional) Argumentos de build
+      # args:
+      #   - BUILD_VERSION=1.0.0
+
+    image: task-management-api:latest  # Nombre de la imagen resultante
+    container_name: taskmanager-app    # Nombre del contenedor
+    restart: unless-stopped            # Política de reinicio
+
+    # Variables de entorno para la aplicación
+    environment:
+      # Perfil de Spring Boot (dev, test, prod)
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILE:-dev}
+
+      # Configuración de base de datos
+      # Usa el nombre del servicio 'postgres' como hostname (Docker DNS interno)
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-taskmanagement_db}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-postgres}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+
+      # Pool de conexiones HikariCP
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: 10
+      SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: 5
+      SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT: 20000
+
+      # JPA/Hibernate
+      SPRING_JPA_HIBERNATE_DDL_AUTO: validate  # En prod: validate (no modificar schema)
+      SPRING_JPA_SHOW_SQL: false               # No mostrar SQL en logs (usa Logback)
+
+      # JWT Configuration
+      JWT_SECRET: ${JWT_SECRET:-your-secret-key-change-in-production-min-256-bits}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-86400000}  # 24 horas en milisegundos
+
+      # Server
+      SERVER_PORT: 8080
+
+      # Logging
+      LOGGING_LEVEL_ROOT: INFO
+      LOGGING_LEVEL_COM_TASKMANAGEMENT_API: ${LOG_LEVEL:-DEBUG}
+
+      # Actuator
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info,metrics,prometheus
+
+      # Zona horaria
+      TZ: America/Mexico_City
+
+      # JAVA_OPTS (ya definidos en Dockerfile, se pueden sobrescribir aquí)
+      # JAVA_OPTS: "-Xmx512m -Xms256m"
+
+    ports:
+      # Puerto expuesto: host:contenedor
+      - "${APP_PORT:-8080}:8080"
+
+    # Volúmenes (opcional, para desarrollo hot-reload)
+    # volumes:
+    #   - ./logs:/app/logs  # Persistir logs fuera del contenedor
+
+    # Limitar recursos del contenedor
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'       # Máximo 1 CPU
+          memory: 1G        # Máximo 1GB de RAM
+        reservations:
+          cpus: '0.25'      # Mínimo 0.25 CPU reservado
+          memory: 256M      # Mínimo 256MB reservado
+
+    # Dependencias: La app necesita que PostgreSQL esté saludable
+    depends_on:
+      postgres:
+        condition: service_healthy  # Espera a que postgres pase el healthcheck
+
+    # Red
+    networks:
+      - taskmanager-network
+
+    # Health check de la aplicación
+    # Verifica el endpoint de Actuator
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/v1/actuator/health"]
+      interval: 30s        # Verifica cada 30 segundos
+      timeout: 5s          # Timeout de 5 segundos
+      retries: 3           # 3 intentos antes de marcar como unhealthy
+      start_period: 60s    # Espera 60 segundos antes de empezar healthchecks
+
+  # ============================================================================
+  # SERVICIO: POSTGRESQL 18
+  # ============================================================================
   # Servicio de PostgreSQL 18
   # PostgreSQL 18 incluye mejoras en performance, particionado y seguridad
   postgres:
@@ -182,15 +285,17 @@ networks:
 # COMANDOS ÚTILES
 # ============================================================================
 #
-# Iniciar servicios:
+# --- INICIAR Y DETENER ---
+#
+# Construir imágenes e iniciar todos los servicios:
+#   docker compose up -d --build
+#
+# Iniciar servicios (sin rebuild):
 #   docker compose up -d
 #
-# Ver logs en tiempo real:
-#   docker compose logs -f postgres
-#   docker compose logs -f pgadmin
-#
-# Ver estado de los servicios:
-#   docker compose ps
+# Iniciar solo servicios específicos:
+#   docker compose up -d postgres    # Solo PostgreSQL
+#   docker compose up -d app         # Solo la aplicación
 #
 # Detener servicios (mantiene datos):
 #   docker compose stop
@@ -202,33 +307,135 @@ networks:
 #   docker compose down -v
 #
 # Reiniciar un servicio específico:
+#   docker compose restart app
 #   docker compose restart postgres
+#
+# --- LOGS Y MONITOREO ---
+#
+# Ver logs en tiempo real de todos los servicios:
+#   docker compose logs -f
+#
+# Ver logs de servicios específicos:
+#   docker compose logs -f app
+#   docker compose logs -f postgres
+#   docker compose logs -f pgadmin
+#
+# Ver últimas 100 líneas de logs:
+#   docker compose logs --tail=100 app
+#
+# Ver estado de los servicios:
+#   docker compose ps
+#
+# Ver uso de recursos:
+#   docker stats
+#   docker stats taskmanager-app
+#   docker stats taskmanager-postgres
+#
+# Ver health status:
+#   docker compose ps
+#   docker inspect --format='{{.State.Health.Status}}' taskmanager-app
+#
+# --- EJECUTAR COMANDOS EN CONTENEDORES ---
+#
+# Abrir shell en la aplicación:
+#   docker compose exec app sh
 #
 # Ejecutar comando SQL en PostgreSQL:
 #   docker compose exec postgres psql -U postgres -d taskmanagement_db
 #
+# Ver variables de entorno de la aplicación:
+#   docker compose exec app env
+#
+# Probar conectividad desde la app a PostgreSQL:
+#   docker compose exec app ping postgres
+#
+# --- BASE DE DATOS ---
+#
 # Backup de la base de datos:
 #   docker compose exec postgres pg_dump -U postgres taskmanagement_db > backup.sql
+#
+# Backup con timestamp:
+#   docker compose exec postgres pg_dump -U postgres taskmanagement_db > backup-$(date +%Y%m%d-%H%M%S).sql
 #
 # Restaurar backup:
 #   docker compose exec -T postgres psql -U postgres taskmanagement_db < backup.sql
 #
-# Ver uso de recursos:
-#   docker stats taskmanager-postgres
+# Conectarse a PostgreSQL:
+#   docker compose exec postgres psql -U postgres -d taskmanagement_db
+#
+# --- REBUILD Y LIMPIEZA ---
+#
+# Rebuild completo (sin caché):
+#   docker compose build --no-cache app
+#
+# Rebuild y reiniciar:
+#   docker compose up -d --build --force-recreate app
+#
+# Limpiar imágenes huérfanas:
+#   docker image prune
+#
+# Limpiar todo (contenedores, redes, volúmenes, imágenes):
+#   docker system prune -a --volumes
+#
+# --- TESTING ---
+#
+# Verificar health de la aplicación:
+#   curl http://localhost:8080/api/v1/actuator/health
+#
+# Verificar métricas de Actuator:
+#   curl http://localhost:8080/api/v1/actuator/metrics
+#
+# Ver métricas de Prometheus:
+#   curl http://localhost:8080/api/v1/actuator/prometheus
+#
+# Login con usuario de prueba:
+#   curl -X POST http://localhost:8080/api/v1/auth/login \
+#     -H "Content-Type: application/json" \
+#     -d '{"username":"admin","password":"admin123"}'
+#
+# --- DESARROLLO ---
+#
+# Ver logs de build:
+#   docker compose build app
+#
+# Reconstruir solo cuando cambien archivos:
+#   docker compose up -d --build
+#
+# --- TROUBLESHOOTING ---
+#
+# Ver configuración final de docker-compose:
+#   docker compose config
+#
+# Verificar red:
+#   docker network inspect task-project_taskmanager-network
+#
+# Inspeccionar contenedor:
+#   docker inspect taskmanager-app
+#
+# Ver procesos dentro del contenedor:
+#   docker compose exec app ps aux
+#
+# Ver puertos expuestos:
+#   docker compose port app 8080
 #
 # ============================================================================
 # SEGURIDAD - IMPORTANTE PARA PRODUCCIÓN
 # ============================================================================
 #
 # 1. Cambiar credenciales por defecto y usar contraseñas fuertes
-# 2. No exponer el puerto 5432 públicamente (remover sección ports)
+# 2. No exponer puertos innecesarios (5432, 5050) públicamente
 # 3. Usar Docker secrets en lugar de variables de entorno para passwords
-# 4. Implementar SSL/TLS para conexiones a PostgreSQL
-# 5. Configurar pg_hba.conf para restringir accesos
+# 4. Implementar SSL/TLS para todas las conexiones
+# 5. Configurar pg_hba.conf para restringir accesos a PostgreSQL
 # 6. Habilitar auditoría y logging adecuado
-# 7. Mantener PostgreSQL actualizado con parches de seguridad
+# 7. Mantener todas las imágenes actualizadas con parches de seguridad
 # 8. Implementar backups automáticos y encriptados
-# 9. Limitar recursos del contenedor apropiadamente
+# 9. Limitar recursos de contenedores apropiadamente
 # 10. Usar imágenes oficiales y verificar checksums
+# 11. Ejecutar contenedores con usuarios no privilegiados (ya implementado)
+# 12. Usar networks privadas (no exponer servicios internos)
+# 13. Implementar rate limiting y firewall
+# 14. Escanear imágenes con herramientas como Trivy o Snyk
+# 15. Usar .env file para variables sensibles (no commitear a git)
 #
 # ============================================================================

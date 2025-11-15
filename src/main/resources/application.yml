@@ -104,6 +104,16 @@ spring:
       leak-detection-threshold: 60000
 
   # ==========================================================================
+  # CONFIGURACIÓN DE INICIALIZACIÓN DE DATOS
+  # ==========================================================================
+  sql:
+    init:
+      # Ejecutar scripts SQL al inicio (data.sql)
+      mode: always
+      # Continuar si hay errores (para evitar duplicados)
+      continue-on-error: true
+
+  # ==========================================================================
   # CONFIGURACIÓN DE JPA / HIBERNATE
   # ==========================================================================
   jpa:
@@ -304,21 +314,84 @@ logging:
 # ============================================================================
 # CONFIGURACIÓN DE ACTUATOR (MONITOREO Y MÉTRICAS)
 # ============================================================================
-# Descomentar si agregas: org.springframework.boot:spring-boot-starter-actuator
+# Spring Boot Actuator proporciona endpoints de producción para:
+# - Monitoreo de salud de la aplicación
+# - Métricas de rendimiento
+# - Información de la aplicación
+# - Estado de componentes (BD, disco, etc)
 #
-# management:
-#   endpoints:
-#     web:
-#       exposure:
-#         include: health,info,metrics,prometheus
-#       base-path: /actuator
-#   endpoint:
-#     health:
-#       show-details: when-authorized
-#   metrics:
-#     export:
-#       prometheus:
-#         enabled: true
+# SEGURIDAD: Actuator expone información sensible
+# - En desarrollo: Endpoints abiertos para facilitar debugging
+# - En producción: Endpoints protegidos y limitados
+#
+management:
+  # Configuración de endpoints
+  endpoints:
+    web:
+      # Exponer endpoints específicos
+      # health: Estado de salud de la aplicación
+      # info: Información de la aplicación
+      # metrics: Métricas de la aplicación
+      # prometheus: Métricas en formato Prometheus
+      exposure:
+        include: health,info,metrics,prometheus
+
+      # Ruta base para acceder a los endpoints
+      # URL: http://localhost:8080/api/v1/actuator/health
+      base-path: /actuator
+
+  # Configuración del endpoint de health
+  endpoint:
+    health:
+      # Mostrar detalles completos de salud
+      # never: Nunca mostrar detalles
+      # when-authorized: Solo para usuarios autenticados
+      # always: Siempre mostrar (solo desarrollo)
+      show-details: when-authorized
+
+      # Incluir componentes específicos en health check
+      show-components: when-authorized
+
+  # Configuración de health indicators
+  health:
+    # Verificar conectividad a la base de datos
+    db:
+      enabled: true
+
+    # Verificar espacio en disco
+    diskspace:
+      enabled: true
+      threshold: 10MB # Alerta si queda menos de 10MB
+
+  # Configuración de métricas
+  metrics:
+    # Tags globales para todas las métricas
+    tags:
+      application: ${spring.application.name}
+      environment: ${spring.profiles.active:default}
+
+    # Exportar métricas en formato Prometheus
+    export:
+      prometheus:
+        enabled: true
+
+  # Información de la aplicación (expuesta en /actuator/info)
+  info:
+    # Incluir información de Git (si existe git.properties)
+    git:
+      mode: full
+
+    # Incluir información de build
+    build:
+      enabled: true
+
+    # Incluir información del entorno Java
+    java:
+      enabled: true
+
+    # Incluir información del sistema operativo
+    os:
+      enabled: true
 
 # ============================================================================
 # CONFIGURACIÓN PERSONALIZADA DE LA APLICACIÓN
@@ -332,6 +405,32 @@ app:
   # Configuraciones de negocio
   # max-tasks-per-user: 100
   # task-expiration-days: 30
+
+# ============================================================================
+# CONFIGURACIÓN DE CORS (Cross-Origin Resource Sharing)
+# ============================================================================
+# CORS permite que aplicaciones web desde otros dominios accedan a la API
+# Necesario cuando frontend y backend están en diferentes puertos/dominios
+cors:
+  # Orígenes permitidos para hacer peticiones a la API
+  # DESARROLLO: localhost con diferentes puertos (React, Angular, Vue)
+  # PRODUCCIÓN: Solo dominios de producción
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:4200,http://localhost:5173}
+
+# ============================================================================
+# CONFIGURACIÓN DE JWT (JSON WEB TOKEN)
+# ============================================================================
+jwt:
+  # Clave secreta para firmar los tokens JWT
+  # IMPORTANTE: En producción, usar variable de entorno
+  # Esta clave NUNCA debe ser compartida ni commiteada en repositorios públicos
+  # Generada con: openssl rand -base64 64
+  secret-key: ${JWT_SECRET:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
+
+  # Tiempo de expiración del token en milisegundos
+  # 86400000 ms = 24 horas
+  # En producción, considerar tiempos más cortos (1-2 horas) con refresh tokens
+  expiration: ${JWT_EXPIRATION:86400000}
 
 ---
 # ============================================================================

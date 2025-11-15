@@ -12,6 +12,8 @@ import com.taskmanagement.api.service.TaskService;
 import com.taskmanagement.api.service.TaskStatisticsDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -187,6 +189,74 @@ public class TaskServiceImpl implements TaskService {
         stats.setCancelledTasks(taskRepository.countByStatus(TaskStatus.CANCELLED));
 
         return stats;
+    }
+
+    // =========================================================================
+    // MÉTODOS CON PAGINACIÓN
+    // =========================================================================
+
+    /**
+     * {@inheritDoc}
+     *
+     * Implementación de paginación usando Spring Data JPA.
+     *
+     * CÓMO FUNCIONA:
+     * 1. El Pageable contiene: número de página, tamaño, ordenamiento
+     * 2. Spring Data JPA genera automáticamente la query SQL con LIMIT y OFFSET
+     * 3. Page<Task> contiene los datos + metadata de paginación
+     * 4. Convertimos Task -> TaskResponseDto usando map()
+     *
+     * VENTAJAS:
+     * - Performance: Solo carga datos de la página actual
+     * - Escalabilidad: Funciona bien con millones de registros
+     * - Metadata: Incluye info de paginación (totalPages, totalElements, etc)
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public Page<TaskResponseDto> getAllTasks(Pageable pageable) {
+        log.info("Obteniendo tareas paginadas - Página: {}, Tamaño: {}, Orden: {}",
+                pageable.getPageNumber(),
+                pageable.getPageSize(),
+                pageable.getSort());
+
+        // Page.map() transforma cada elemento de la página
+        // Sin necesidad de cargar todo en memoria primero
+        return taskRepository.findAll(pageable)
+                .map(TaskMapper::toResponseDto);
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * Busca tareas por estado con paginación.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public Page<TaskResponseDto> getTasksByStatus(TaskStatus status, Pageable pageable) {
+        log.info("Buscando tareas con estado: {} - Página: {}, Tamaño: {}",
+                status,
+                pageable.getPageNumber(),
+                pageable.getPageSize());
+
+        return taskRepository.findByStatus(status, pageable)
+                .map(TaskMapper::toResponseDto);
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * Busca tareas por título con paginación.
+     */
+    @Override
+    @Transactional(readOnly = true)
+    public Page<TaskResponseDto> searchTasksByTitle(String title, Pageable pageable) {
+        log.info("Buscando tareas por título: '{}' - Página: {}, Tamaño: {}",
+                title,
+                pageable.getPageNumber(),
+                pageable.getPageSize());
+
+        return taskRepository.findByTitleContainingIgnoreCase(title, pageable)
+                .map(TaskMapper::toResponseDto);
     }
 
     // =========================================================================

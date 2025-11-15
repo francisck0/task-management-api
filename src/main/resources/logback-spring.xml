@@ -1,0 +1,302 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+============================================================================
+CONFIGURACIÓN DE LOGBACK PARA TASK MANAGEMENT API
+============================================================================
+
+¿QUÉ ES LOGBACK?
+- Framework de logging para Java
+- Sucesor de Log4j (más rápido y eficiente)
+- Integración nativa con SLF4J
+- Soporte para perfiles de Spring Boot
+
+¿POR QUÉ LOGBACK EN LUGAR DE LOG4J2?
+✅ Integrado por defecto en Spring Boot
+✅ Más maduro y estable
+✅ Mejor rendimiento
+✅ Configuración más simple
+✅ Soporte nativo de Spring profiles
+
+¿QUÉ ES SLF4J?
+- Simple Logging Facade for Java
+- API abstracta de logging
+- Permite cambiar implementación (Logback, Log4j, etc) sin cambiar código
+- Usado en Spring Boot por defecto
+
+NIVELES DE LOG (de más a menos verbose):
+- TRACE: Información muy detallada (debugging profundo)
+- DEBUG: Información de debugging
+- INFO:  Información general (eventos importantes)
+- WARN:  Advertencias (problemas potenciales)
+- ERROR: Errores (problemas que deben atenderse)
+
+MEJORES PRÁCTICAS:
+1. Desarrollo: DEBUG o TRACE (máximo detalle)
+2. Testing: INFO (eventos importantes)
+3. Producción: WARN o ERROR (solo problemas)
+
+FORMATOS DE LOG:
+- Console: Formato legible para humanos (colores)
+- File: Formato estructurado para procesamiento
+- JSON: Para sistemas de agregación de logs (ELK, Splunk)
+
+============================================================================
+-->
+<configuration>
+
+    <!-- ===================================================================
+         VARIABLES DE CONFIGURACIÓN
+         =================================================================== -->
+
+    <!-- Nombre de la aplicación (usado en logs) -->
+    <property name="APP_NAME" value="task-management-api"/>
+
+    <!-- Directorio donde se guardan los logs -->
+    <property name="LOG_PATH" value="logs"/>
+
+    <!-- Patrón de formato para logs en consola -->
+    <!-- %d{}: Fecha y hora -->
+    <!-- %highlight(): Colorear según nivel de log -->
+    <!-- %-5level: Nivel de log (INFO, DEBUG, etc) con padding de 5 caracteres -->
+    <!-- %logger{36}: Nombre del logger (truncado a 36 caracteres) -->
+    <!-- %msg: El mensaje del log -->
+    <!-- %n: Nueva línea -->
+    <!-- %exception: Stack trace si hay excepción -->
+    <property name="CONSOLE_LOG_PATTERN"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} %highlight(%-5level) [%thread] %cyan(%logger{36}) - %msg%n%exception"/>
+
+    <!-- Patrón de formato para logs en archivo -->
+    <!-- Similar a consola pero sin colores (no soportados en archivos) -->
+    <property name="FILE_LOG_PATTERN"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n%exception"/>
+
+    <!-- Patrón para logs en formato JSON (opcional) -->
+    <!-- Útil para sistemas de agregación de logs como ELK, Splunk -->
+    <property name="JSON_LOG_PATTERN"
+              value='{"timestamp":"%d{yyyy-MM-dd HH:mm:ss.SSS}","level":"%level","thread":"%thread","logger":"%logger{36}","message":"%msg","exception":"%exception"}'/>
+
+    <!-- ===================================================================
+         APPENDER: CONSOLE (Salida estándar)
+         =================================================================== -->
+    <!-- Appender: Define DÓNDE se escriben los logs (consola, archivo, etc) -->
+
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <!-- Codificación UTF-8 para caracteres especiales -->
+        <encoder>
+            <pattern>${CONSOLE_LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+
+        <!-- Filtro: Solo mostrar logs de nivel INFO o superior en consola -->
+        <!-- Evita contaminar consola con logs de DEBUG/TRACE -->
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>INFO</level>
+        </filter>
+    </appender>
+
+    <!-- ===================================================================
+         APPENDER: FILE (Archivo de logs general)
+         =================================================================== -->
+
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <!-- Archivo activo -->
+        <file>${LOG_PATH}/${APP_NAME}.log</file>
+
+        <!-- Codificación -->
+        <encoder>
+            <pattern>${FILE_LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+
+        <!-- Política de rotación de logs -->
+        <!-- Los logs se rotan para evitar archivos enormes -->
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <!-- Patrón de nombre de archivos archivados -->
+            <!-- Ejemplo: task-management-api-2025-11-15.1.log.gz -->
+            <fileNamePattern>${LOG_PATH}/archived/${APP_NAME}-%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+
+            <!-- Máximo tamaño de cada archivo antes de rotar -->
+            <maxFileSize>10MB</maxFileSize>
+
+            <!-- Máximo de días para mantener logs -->
+            <!-- Logs más antiguos se eliminan automáticamente -->
+            <maxHistory>30</maxHistory>
+
+            <!-- Tamaño total máximo de todos los logs -->
+            <!-- Si se supera, se eliminan los logs más antiguos -->
+            <totalSizeCap>1GB</totalSizeCap>
+        </rollingPolicy>
+    </appender>
+
+    <!-- ===================================================================
+         APPENDER: ERROR FILE (Archivo solo para errores)
+         =================================================================== -->
+    <!-- Útil para monitoreo: revisar solo errores sin ruido de INFO -->
+
+    <appender name="ERROR_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_PATH}/${APP_NAME}-error.log</file>
+
+        <encoder>
+            <pattern>${FILE_LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+
+        <!-- Filtro: Solo errores (ERROR) -->
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>ERROR</level>
+        </filter>
+
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_PATH}/archived/${APP_NAME}-error-%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <maxFileSize>10MB</maxFileSize>
+            <maxHistory>90</maxHistory> <!-- Mantener errores por 90 días -->
+            <totalSizeCap>500MB</totalSizeCap>
+        </rollingPolicy>
+    </appender>
+
+    <!-- ===================================================================
+         LOGGERS ESPECÍFICOS
+         =================================================================== -->
+    <!-- Logger: Define QUÉ se loguea y a QUÉ nivel -->
+
+    <!-- Logger para nuestra aplicación -->
+    <logger name="com.taskmanagement.api" level="DEBUG" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
+        <appender-ref ref="ERROR_FILE"/>
+    </logger>
+
+    <!-- Loggers para frameworks (configurados para reducir ruido) -->
+
+    <!-- Spring Framework -->
+    <logger name="org.springframework" level="INFO"/>
+    <logger name="org.springframework.web" level="INFO"/>
+    <logger name="org.springframework.security" level="INFO"/>
+    <logger name="org.springframework.boot" level="INFO"/>
+
+    <!-- Hibernate/JPA -->
+    <logger name="org.hibernate" level="INFO"/>
+    <logger name="org.hibernate.SQL" level="DEBUG"/> <!-- Mostrar queries SQL -->
+    <logger name="org.hibernate.type.descriptor.sql" level="TRACE"/> <!-- Mostrar parámetros de queries -->
+    <logger name="org.hibernate.stat" level="DEBUG"/> <!-- Estadísticas -->
+
+    <!-- HikariCP (Connection Pool) -->
+    <logger name="com.zaxxer.hikari" level="INFO"/>
+    <logger name="com.zaxxer.hikari.HikariConfig" level="DEBUG"/>
+
+    <!-- PostgreSQL Driver -->
+    <logger name="org.postgresql" level="INFO"/>
+
+    <!-- ===================================================================
+         ROOT LOGGER (Logger por defecto)
+         =================================================================== -->
+    <!-- Se aplica a todos los loggers que no tienen configuración específica -->
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
+        <appender-ref ref="ERROR_FILE"/>
+    </root>
+
+    <!-- ===================================================================
+         PROFILES DE SPRING BOOT
+         =================================================================== -->
+    <!-- Configuraciones específicas por ambiente -->
+
+    <!-- PROFILE: DEVELOPMENT -->
+    <!-- Desarrollo local - Máximo detalle en logs -->
+    <springProfile name="dev">
+        <!-- Sobrescribir logger de nuestra app para TRACE en desarrollo -->
+        <logger name="com.taskmanagement.api" level="TRACE" additivity="false">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="FILE"/>
+        </logger>
+
+        <!-- Mostrar queries SQL con parámetros -->
+        <logger name="org.hibernate.SQL" level="DEBUG"/>
+        <logger name="org.hibernate.type.descriptor.sql" level="TRACE"/>
+
+        <!-- Root logger en DEBUG para desarrollo -->
+        <root level="DEBUG">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="FILE"/>
+        </root>
+    </springProfile>
+
+    <!-- PROFILE: TEST -->
+    <!-- Testing - Logs mínimos para no contaminar tests -->
+    <springProfile name="test">
+        <!-- Solo mostrar WARN y ERROR en tests -->
+        <logger name="com.taskmanagement.api" level="WARN" additivity="false">
+            <appender-ref ref="CONSOLE"/>
+        </logger>
+
+        <!-- Reducir ruido de frameworks en tests -->
+        <logger name="org.springframework" level="WARN"/>
+        <logger name="org.hibernate" level="WARN"/>
+
+        <!-- Root logger en WARN para tests -->
+        <root level="WARN">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+    </springProfile>
+
+    <!-- PROFILE: PRODUCTION -->
+    <!-- Producción - Solo logs importantes, optimizado para performance -->
+    <springProfile name="prod">
+        <!-- Solo INFO y superior en producción -->
+        <logger name="com.taskmanagement.api" level="INFO" additivity="false">
+            <appender-ref ref="FILE"/>
+            <appender-ref ref="ERROR_FILE"/>
+        </logger>
+
+        <!-- NO mostrar queries SQL en producción (performance) -->
+        <logger name="org.hibernate.SQL" level="WARN"/>
+        <logger name="org.hibernate.type.descriptor.sql" level="WARN"/>
+
+        <!-- Frameworks en WARN -->
+        <logger name="org.springframework" level="WARN"/>
+        <logger name="org.hibernate" level="WARN"/>
+
+        <!-- Root logger en WARN para producción -->
+        <root level="WARN">
+            <appender-ref ref="FILE"/>
+            <appender-ref ref="ERROR_FILE"/>
+        </root>
+    </springProfile>
+
+    <!-- ===================================================================
+         CONFIGURACIÓN AVANZADA (OPCIONAL)
+         =================================================================== -->
+
+    <!-- Async Appenders (para mejor performance) -->
+    <!-- Los logs se escriben en un thread separado -->
+    <!-- Útil en producción para no bloquear threads de la aplicación -->
+    <!--
+    <appender name="ASYNC_FILE" class="ch.qos.logback.classic.AsyncAppender">
+        <appender-ref ref="FILE"/>
+        <queueSize>512</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+    </appender>
+
+    <appender name="ASYNC_ERROR" class="ch.qos.logback.classic.AsyncAppender">
+        <appender-ref ref="ERROR_FILE"/>
+        <queueSize>512</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+    </appender>
+    -->
+
+    <!-- JSON Appender (para integración con ELK, Splunk, etc) -->
+    <!--
+    <appender name="JSON_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_PATH}/${APP_NAME}.json</file>
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder"/>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_PATH}/archived/${APP_NAME}-%d{yyyy-MM-dd}.%i.json.gz</fileNamePattern>
+            <maxFileSize>10MB</maxFileSize>
+            <maxHistory>30</maxHistory>
+        </rollingPolicy>
+    </appender>
+    -->
+
+</configuration>

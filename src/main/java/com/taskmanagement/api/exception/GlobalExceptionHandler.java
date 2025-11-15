@@ -1,13 +1,17 @@
 package com.taskmanagement.api.exception;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -126,6 +130,177 @@ public class GlobalExceptionHandler {
         );
 
         return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+    }
+
+    /**
+     * Maneja violaciones de integridad de datos en la base de datos.
+     *
+     * Se lanza cuando se violan constraints de BD como:
+     * - Unique constraints (valor duplicado)
+     * - Foreign key constraints (referencia inválida)
+     * - Not null constraints (valor null no permitido)
+     *
+     * Devuelve código 409 (CONFLICT).
+     *
+     * @param ex excepción de integridad de datos
+     * @param request contexto de la petición HTTP
+     * @return respuesta de error con código 409
+     */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ErrorResponse> handleDataIntegrityViolation(
+            DataIntegrityViolationException ex,
+            WebRequest request) {
+
+        log.error("Violación de integridad de datos: {}", ex.getMessage());
+
+        // Extraer mensaje más amigable del error de BD
+        String message = "Violación de integridad de datos";
+        String rootCause = ex.getRootCause() != null ? ex.getRootCause().getMessage() : ex.getMessage();
+
+        // Identificar tipo de constraint violado
+        if (rootCause != null) {
+            if (rootCause.contains("duplicate key") || rootCause.contains("unique constraint")) {
+                message = "Ya existe un registro con estos datos. Por favor, use valores únicos.";
+            } else if (rootCause.contains("foreign key constraint")) {
+                message = "No se puede completar la operación debido a referencias con otros datos.";
+            } else if (rootCause.contains("not-null constraint")) {
+                message = "Faltan campos obligatorios en la solicitud.";
+            }
+        }
+
+        ErrorResponse errorResponse = new ErrorResponse(
+                LocalDateTime.now(),
+                HttpStatus.CONFLICT.value(),
+                HttpStatus.CONFLICT.getReasonPhrase(),
+                message,
+                request.getDescription(false).replace("uri=", "")
+        );
+
+        return new ResponseEntity<>(errorResponse, HttpStatus.CONFLICT);
+    }
+
+    /**
+     * Maneja errores de parsing de JSON en el request body.
+     *
+     * Se lanza cuando:
+     * - El JSON está malformado
+     * - Falta una llave o coma
+     * - Tipos de datos no coinciden
+     * - Valores de enum inválidos
+     *
+     * Devuelve código 400 (BAD_REQUEST).
+     *
+     * @param ex excepción de mensaje no legible
+     * @param request contexto de la petición HTTP
+     * @return respuesta de error con código 400
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleHttpMessageNotReadable(
+            HttpMessageNotReadableException ex,
+            WebRequest request) {
+
+        log.error("Error al leer el cuerpo de la petición: {}", ex.getMessage());
+
+        String message = "El cuerpo de la petición es inválido o está mal formado";
+
+        // Proporcionar mensaje más específico si es posible
+        String rootCause = ex.getMessage();
+        if (rootCause != null) {
+            if (rootCause.contains("JSON parse error")) {
+                message = "Error al parsear JSON. Verifique la sintaxis del JSON.";
+            } else if (rootCause.contains("Cannot deserialize")) {
+                message = "Tipo de dato inválido en el JSON. Verifique los tipos de los campos.";
+            } else if (rootCause.contains("not one of the values accepted for Enum")) {
+                message = "Valor de enumeración inválido. Verifique los valores permitidos.";
+            }
+        }
+
+        ErrorResponse errorResponse = new ErrorResponse(
+                LocalDateTime.now(),
+                HttpStatus.BAD_REQUEST.value(),
+                HttpStatus.BAD_REQUEST.getReasonPhrase(),
+                message,
+                request.getDescription(false).replace("uri=", "")
+        );
+
+        return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+    }
+
+    /**
+     * Maneja errores de tipo de argumento en path variables o request params.
+     *
+     * Se lanza cuando:
+     * - Se espera un Long pero se recibe texto: /tasks/abc
+     * - Se espera un Enum pero se recibe valor inválido: /tasks/status/INVALID
+     * - Tipos primitivos reciben valores no convertibles
+     *
+     * Devuelve código 400 (BAD_REQUEST).
+     *
+     * @param ex excepción de tipo de argumento incorrecto
+     * @param request contexto de la petición HTTP
+     * @return respuesta de error con código 400
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleTypeMismatch(
+            MethodArgumentTypeMismatchException ex,
+            WebRequest request) {
+
+        log.error("Tipo de argumento incorrecto: {}", ex.getMessage());
+
+        String parameterName = ex.getName();
+        String requiredType = ex.getRequiredType() != null
+                ? ex.getRequiredType().getSimpleName()
+                : "desconocido";
+        Object providedValue = ex.getValue();
+
+        String message = String.format(
+                "El parámetro '%s' debe ser de tipo %s. Valor proporcionado: '%s'",
+                parameterName,
+                requiredType,
+                providedValue
+        );
+
+        ErrorResponse errorResponse = new ErrorResponse(
+                LocalDateTime.now(),
+                HttpStatus.BAD_REQUEST.value(),
+                HttpStatus.BAD_REQUEST.getReasonPhrase(),
+                message,
+                request.getDescription(false).replace("uri=", "")
+        );
+
+        return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
+    }
+
+    /**
+     * Maneja errores de autorización (Access Denied).
+     *
+     * Se lanza cuando:
+     * - Usuario no tiene el rol requerido
+     * - Usuario no tiene permisos para el recurso
+     * - @PreAuthorize falla
+     *
+     * Devuelve código 403 (FORBIDDEN).
+     *
+     * @param ex excepción de acceso denegado
+     * @param request contexto de la petición HTTP
+     * @return respuesta de error con código 403
+     */
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<ErrorResponse> handleAccessDenied(
+            AccessDeniedException ex,
+            WebRequest request) {
+
+        log.warn("Acceso denegado: {}", ex.getMessage());
+
+        ErrorResponse errorResponse = new ErrorResponse(
+                LocalDateTime.now(),
+                HttpStatus.FORBIDDEN.value(),
+                HttpStatus.FORBIDDEN.getReasonPhrase(),
+                "No tiene permisos para acceder a este recurso",
+                request.getDescription(false).replace("uri=", "")
+        );
+
+        return new ResponseEntity<>(errorResponse, HttpStatus.FORBIDDEN);
     }
 
     /**

@@ -4,6 +4,8 @@ import com.taskmanagement.api.dto.TaskPatchDto;
 import com.taskmanagement.api.dto.TaskRequestDto;
 import com.taskmanagement.api.dto.TaskResponseDto;
 import com.taskmanagement.api.model.TaskStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 import java.util.List;
 
@@ -90,4 +92,54 @@ public interface TaskService {
      * @return información estadística (por ejemplo, conteo por estado)
      */
     TaskStatisticsDto getStatistics();
+
+    // =========================================================================
+    // MÉTODOS CON PAGINACIÓN
+    // =========================================================================
+
+    /**
+     * Obtiene todas las tareas con paginación y ordenamiento.
+     *
+     * VENTAJAS DE PAGINACIÓN:
+     * - Mejor rendimiento: No carga todas las tareas en memoria
+     * - Escalabilidad: Funciona bien con 10,000+ tareas
+     * - UX mejorada: Respuestas más rápidas al cliente
+     *
+     * Ejemplo de uso:
+     * <pre>
+     * // Página 0 (primera), 20 elementos, ordenado por fecha de creación descendente
+     * Pageable pageable = PageRequest.of(0, 20, Sort.by("createdAt").descending());
+     * Page<TaskResponseDto> tasks = taskService.getAllTasks(pageable);
+     * </pre>
+     *
+     * La respuesta Page<> incluye:
+     * - content: Lista de tareas de la página actual
+     * - totalElements: Total de tareas en BD
+     * - totalPages: Total de páginas
+     * - number: Número de página actual
+     * - size: Tamaño de página
+     * - first/last: Indicadores de primera/última página
+     *
+     * @param pageable configuración de paginación (page, size, sort)
+     * @return página de tareas
+     */
+    Page<TaskResponseDto> getAllTasks(Pageable pageable);
+
+    /**
+     * Busca tareas por estado con paginación.
+     *
+     * @param status estado de las tareas a buscar
+     * @param pageable configuración de paginación
+     * @return página de tareas con el estado especificado
+     */
+    Page<TaskResponseDto> getTasksByStatus(TaskStatus status, Pageable pageable);
+
+    /**
+     * Busca tareas por título con paginación.
+     *
+     * @param title texto a buscar en el título
+     * @param pageable configuración de paginación
+     * @return página de tareas que coinciden con la búsqueda
+     */
+    Page<TaskResponseDto> searchTasksByTitle(String title, Pageable pageable);
 }

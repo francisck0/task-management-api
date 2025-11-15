@@ -61,3 +61,26 @@ logs/
 ### Docker volumes (si se usa bind mount) ###
 postgres-data/
 pgadmin-data/
+
+### Spring Boot ###
+# Archivos de configuración sensibles (NO commitear en producción)
+application-prod.yml
+application-secrets.yml
+*.key
+*.jks
+*.p12
+
+### Testing ###
+# Archivos de test temporales
+test-output/
+*.hprof
+
+### Actuator ###
+# Archivos de métricas temporales (si se guardan localmente)
+metrics/
+
+### JWT ###
+# Claves privadas (NUNCA commitear)
+*.pem
+private-key.txt
+jwt-secret.txt

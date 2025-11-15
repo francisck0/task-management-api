@@ -2,6 +2,8 @@ package com.taskmanagement.api.repository;
 
 import com.taskmanagement.api.model.Task;
 import com.taskmanagement.api.model.TaskStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -83,4 +85,58 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
      * @return true si existe, false en caso contrario
      */
     boolean existsByTitle(String title);
+
+    // =========================================================================
+    // MÉTODOS CON PAGINACIÓN
+    // =========================================================================
+
+    /**
+     * Encuentra todas las tareas con paginación y ordenamiento.
+     *
+     * Este método sobrescribe el findAll() de JpaRepository para agregar
+     * soporte de paginación.
+     *
+     * IMPORTANTE: Spring Data JPA automáticamente aplica el Pageable a la query.
+     *
+     * Ejemplo de uso:
+     * <pre>
+     * Pageable pageable = PageRequest.of(0, 20, Sort.by("createdAt").descending());
+     * Page<Task> tasks = taskRepository.findAll(pageable);
+     * </pre>
+     *
+     * @param pageable objeto con información de paginación (page, size, sort)
+     * @return página de tareas
+     */
+    Page<Task> findAll(Pageable pageable);
+
+    /**
+     * Encuentra tareas por estado con paginación.
+     *
+     * Spring Data JPA genera automáticamente:
+     * SELECT * FROM tasks WHERE status = ? ORDER BY ... LIMIT ? OFFSET ?
+     *
+     * Ejemplo:
+     * <pre>
+     * Pageable pageable = PageRequest.of(0, 10);
+     * Page<Task> pendingTasks = taskRepository.findByStatus(TaskStatus.PENDING, pageable);
+     * </pre>
+     *
+     * @param status estado a buscar
+     * @param pageable configuración de paginación
+     * @return página de tareas con el estado especificado
+     */
+    Page<Task> findByStatus(TaskStatus status, Pageable pageable);
+
+    /**
+     * Busca tareas por título (case-insensitive) con paginación.
+     *
+     * Query generada:
+     * SELECT * FROM tasks WHERE LOWER(title) LIKE LOWER(CONCAT('%', ?, '%'))
+     * ORDER BY ... LIMIT ? OFFSET ?
+     *
+     * @param title texto a buscar en el título
+     * @param pageable configuración de paginación
+     * @return página de tareas que contienen el texto
+     */
+    Page<Task> findByTitleContainingIgnoreCase(String title, Pageable pageable);
 }
