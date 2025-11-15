@@ -87,7 +87,7 @@ class TaskRepositoryIntegrationTest extends AbstractIntegrationTest {
     // =========================================================================
 
     @BeforeEach
-    void setUp() {
+    protected void setUp() {
         // Limpiar la base de datos antes de cada test
         // Aunque @Transactional hace rollback, esto asegura estado limpio
         taskRepository.deleteAll();

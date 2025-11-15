@@ -19,6 +19,9 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -157,36 +160,59 @@ public class TaskController {
     }
 
     /**
-     * Obtiene todas las tareas.
+     * Obtiene todas las tareas con paginación.
      *
      * Endpoint: GET /tasks
      */
     @GetMapping
     @Operation(
-        summary = "Obtener todas las tareas",
+        summary = "Obtener todas las tareas con paginación",
         description = """
-            Retorna una lista con todas las tareas del sistema ordenadas por fecha de creación
-            (más recientes primero).
+            Retorna una página de tareas del sistema con soporte de paginación y ordenamiento.
 
-            Si no hay tareas, retorna una lista vacía [].
+            **Parámetros de paginación (opcionales):**
+            - `page`: Número de página (inicia en 0). Default: 0
+            - `size`: Cantidad de elementos por página. Default: 20
+            - `sort`: Campo(s) para ordenar. Formato: campo,direccion (ej: createdAt,desc)
 
-            **Nota:** En producción se recomienda implementar paginación para grandes volúmenes de datos.
+            **Ejemplos de uso:**
+            - `/tasks` → Primera página con 20 elementos
+            - `/tasks?page=1&size=10` → Segunda página con 10 elementos
+            - `/tasks?page=0&size=5&sort=title,asc` → Primera página, 5 elementos, ordenado por título ascendente
+            - `/tasks?sort=createdAt,desc&sort=title,asc` → Ordenamiento múltiple
+
+            **Respuesta incluye:**
+            - `content`: Lista de tareas de la página actual
+            - `totalElements`: Total de tareas en la base de datos
+            - `totalPages`: Total de páginas disponibles
+            - `number`: Número de página actual
+            - `size`: Tamaño de página
+            - `first`: ¿Es la primera página?
+            - `last`: ¿Es la última página?
             """
     )
     @ApiResponses({
         @ApiResponse(
             responseCode = "200",
-            description = "Lista de tareas obtenida exitosamente",
+            description = "Página de tareas obtenida exitosamente",
             content = @Content(
                 mediaType = "application/json",
-                array = @ArraySchema(schema = @Schema(implementation = TaskResponseDto.class))
+                schema = @Schema(implementation = Page.class)
             )
         )
     })
-    public ResponseEntity<List<TaskResponseDto>> getAllTasks() {
-        log.info("Petición recibida para obtener todas las tareas");
+    public ResponseEntity<Page<TaskResponseDto>> getAllTasks(
+            @Parameter(
+                description = "Parámetros de paginación y ordenamiento",
+                example = "page=0&size=20&sort=createdAt,desc"
+            )
+            @PageableDefault(size = 20, sort = "createdAt", direction = org.springframework.data.domain.Sort.Direction.DESC)
+            Pageable pageable) {
 
-        List<TaskResponseDto> tasks = taskService.getAllTasks();
+        log.info("Petición recibida para obtener todas las tareas (paginadas) - Página: {}, Tamaño: {}",
+                pageable.getPageNumber(), pageable.getPageSize());
+
+        Page<TaskResponseDto> tasks = taskService.getAllTasks(pageable);
 
         return ResponseEntity.ok(tasks);
     }
@@ -250,32 +276,42 @@ public class TaskController {
     }
 
     /**
-     * Busca tareas por estado.
+     * Busca tareas por estado con paginación.
      *
      * Endpoint: GET /tasks/status/{status}
      */
     @GetMapping("/status/{status}")
     @Operation(
-        summary = "Buscar tareas por estado",
+        summary = "Buscar tareas por estado con paginación",
         description = """
-            Retorna todas las tareas que tienen el estado especificado.
+            Retorna una página de tareas que tienen el estado especificado.
 
-            Estados válidos:
+            **Estados válidos:**
             - **PENDING**: Tareas pendientes de iniciar
             - **IN_PROGRESS**: Tareas en progreso
             - **COMPLETED**: Tareas completadas
             - **CANCELLED**: Tareas canceladas
 
-            Si no hay tareas con ese estado, retorna una lista vacía [].
+            **Parámetros de paginación (opcionales):**
+            - `page`: Número de página (inicia en 0). Default: 0
+            - `size`: Cantidad de elementos por página. Default: 20
+            - `sort`: Campo(s) para ordenar. Formato: campo,direccion (ej: createdAt,desc)
+
+            **Ejemplos de uso:**
+            - `/tasks/status/PENDING` → Primera página de tareas pendientes
+            - `/tasks/status/COMPLETED?page=1&size=10` → Segunda página de tareas completadas
+            - `/tasks/status/IN_PROGRESS?sort=dueDate,asc` → Tareas en progreso ordenadas por fecha límite
+
+            **Respuesta incluye metadata de paginación** (content, totalElements, totalPages, etc.)
             """
     )
     @ApiResponses({
         @ApiResponse(
             responseCode = "200",
-            description = "Lista de tareas con el estado especificado",
+            description = "Página de tareas con el estado especificado",
             content = @Content(
                 mediaType = "application/json",
-                array = @ArraySchema(schema = @Schema(implementation = TaskResponseDto.class))
+                schema = @Schema(implementation = Page.class)
             )
         ),
         @ApiResponse(
@@ -287,63 +323,87 @@ public class TaskController {
             )
         )
     })
-    public ResponseEntity<List<TaskResponseDto>> getTasksByStatus(
+    public ResponseEntity<Page<TaskResponseDto>> getTasksByStatus(
             @Parameter(
                 description = "Estado de las tareas a buscar",
                 example = "PENDING",
                 required = true,
                 schema = @Schema(allowableValues = {"PENDING", "IN_PROGRESS", "COMPLETED", "CANCELLED"})
             )
-            @PathVariable TaskStatus status) {
+            @PathVariable TaskStatus status,
+            @Parameter(
+                description = "Parámetros de paginación y ordenamiento",
+                example = "page=0&size=20&sort=createdAt,desc"
+            )
+            @PageableDefault(size = 20, sort = "createdAt", direction = org.springframework.data.domain.Sort.Direction.DESC)
+            Pageable pageable) {
 
-        log.info("Petición recibida para obtener tareas con estado: {}", status);
+        log.info("Petición recibida para obtener tareas con estado: {} (paginadas) - Página: {}, Tamaño: {}",
+                status, pageable.getPageNumber(), pageable.getPageSize());
 
-        List<TaskResponseDto> tasks = taskService.getTasksByStatus(status);
+        Page<TaskResponseDto> tasks = taskService.getTasksByStatus(status, pageable);
 
         return ResponseEntity.ok(tasks);
     }
 
     /**
-     * Busca tareas por título (búsqueda parcial).
+     * Busca tareas por título con paginación (búsqueda parcial).
      *
      * Endpoint: GET /tasks/search?title={texto}
      */
     @GetMapping("/search")
     @Operation(
-        summary = "Buscar tareas por título",
+        summary = "Buscar tareas por título con paginación",
         description = """
-            Realiza una búsqueda parcial (case-insensitive) en el título de las tareas.
+            Realiza una búsqueda parcial (case-insensitive) en el título de las tareas con soporte de paginación.
 
-            **Ejemplos:**
+            **Ejemplos de búsqueda:**
             - `?title=comprar` → Encuentra "Comprar pan", "comprar leche", "COMPRAR todo"
             - `?title=reunión` → Encuentra "Reunión con cliente", "Preparar reunión"
 
             La búsqueda no distingue entre mayúsculas y minúsculas.
 
-            Si no hay coincidencias, retorna una lista vacía [].
+            **Parámetros de paginación (opcionales):**
+            - `page`: Número de página (inicia en 0). Default: 0
+            - `size`: Cantidad de elementos por página. Default: 20
+            - `sort`: Campo(s) para ordenar. Formato: campo,direccion (ej: createdAt,desc)
+
+            **Ejemplos de uso completo:**
+            - `/tasks/search?title=comprar` → Primera página de resultados
+            - `/tasks/search?title=reunión&page=1&size=10` → Segunda página con 10 resultados
+            - `/tasks/search?title=proyecto&sort=dueDate,asc` → Ordenado por fecha límite
+
+            **Respuesta incluye metadata de paginación** (content, totalElements, totalPages, etc.)
             """
     )
     @ApiResponses({
         @ApiResponse(
             responseCode = "200",
-            description = "Lista de tareas que coinciden con la búsqueda",
+            description = "Página de tareas que coinciden con la búsqueda",
             content = @Content(
                 mediaType = "application/json",
-                array = @ArraySchema(schema = @Schema(implementation = TaskResponseDto.class))
+                schema = @Schema(implementation = Page.class)
             )
         )
     })
-    public ResponseEntity<List<TaskResponseDto>> searchTasks(
+    public ResponseEntity<Page<TaskResponseDto>> searchTasks(
             @Parameter(
                 description = "Texto a buscar en el título de las tareas (case-insensitive)",
                 example = "comprar",
                 required = true
             )
-            @RequestParam String title) {
+            @RequestParam String title,
+            @Parameter(
+                description = "Parámetros de paginación y ordenamiento",
+                example = "page=0&size=20&sort=createdAt,desc"
+            )
+            @PageableDefault(size = 20, sort = "createdAt", direction = org.springframework.data.domain.Sort.Direction.DESC)
+            Pageable pageable) {
 
-        log.info("Petición recibida para buscar tareas con título: {}", title);
+        log.info("Petición recibida para buscar tareas con título: {} (paginadas) - Página: {}, Tamaño: {}",
+                title, pageable.getPageNumber(), pageable.getPageSize());
 
-        List<TaskResponseDto> tasks = taskService.searchTasksByTitle(title);
+        Page<TaskResponseDto> tasks = taskService.searchTasksByTitle(title, pageable);
 
         return ResponseEntity.ok(tasks);
     }

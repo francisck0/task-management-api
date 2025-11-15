@@ -23,13 +23,14 @@ spring:
   datasource:
     # URL de conexión JDBC
     # Formato: jdbc:postgresql://[host]:[puerto]/[nombre_bd]?[parámetros]
-    url: jdbc:postgresql://localhost:5432/taskmanagement_db
-    username: postgres
-    password: postgres
-    driver-class-name: org.postgresql.Driver
+    # SEGURIDAD: Usar variable de entorno DATABASE_URL
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/taskmanagement_db}
 
-    # SEGURIDAD: En producción, NUNCA hardcodear credenciales
-    # Usar variables de entorno o servicios de gestión de secretos
+    # Credenciales de base de datos
+    # SEGURIDAD: NUNCA hardcodear en producción - usar variables de entorno
+    username: ${DATABASE_USERNAME:postgres}
+    password: ${DATABASE_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
 
     # -------------------------------------------------------------------------
     # HIKARICP - POOL DE CONEXIONES
@@ -41,12 +42,12 @@ spring:
       # Fórmula recomendada: ((core_count * 2) + effective_spindle_count)
       # Para aplicaciones típicas: 10-20 conexiones es suficiente
       # Más conexiones NO significa mejor performance
-      maximum-pool-size: 20
+      maximum-pool-size: ${DB_POOL_SIZE:20}
 
       # PERFORMANCE: Conexiones idle mínimas mantenidas
       # Valor recomendado: mismo que maximum-pool-size para carga estable
       # o 50% de maximum-pool-size para carga variable
-      minimum-idle: 10
+      minimum-idle: ${DB_POOL_MIN_IDLE:10}
 
       # PERFORMANCE: Timeout para obtener una conexión del pool (ms)
       # Si no hay conexiones disponibles en este tiempo, lanza excepción
@@ -246,8 +247,8 @@ server:
   tomcat:
     # Número de threads para manejar requests
     threads:
-      max: 200        # Máximo de threads
-      min-spare: 10   # Threads mínimos en espera
+      max: ${TOMCAT_THREADS_MAX:200}        # Máximo de threads
+      min-spare: ${TOMCAT_THREADS_MIN:10}   # Threads mínimos en espera
 
     # Tamaño máximo de request body
     max-http-form-post-size: 10MB
@@ -281,10 +282,12 @@ logging:
   # TRACE < DEBUG < INFO < WARN < ERROR
   level:
     # Nivel root (por defecto para todo)
-    root: INFO
+    # PRODUCCIÓN: WARN, DESARROLLO: INFO o DEBUG
+    root: ${LOGGING_LEVEL_ROOT:INFO}
 
     # Nuestra aplicación
-    com.taskmanagement.api: DEBUG
+    # PRODUCCIÓN: INFO, DESARROLLO: DEBUG
+    com.taskmanagement.api: ${LOGGING_LEVEL_APP:DEBUG}
 
     # Spring Framework
     org.springframework.web: INFO
@@ -431,6 +434,95 @@ jwt:
   # 86400000 ms = 24 horas
   # En producción, considerar tiempos más cortos (1-2 horas) con refresh tokens
   expiration: ${JWT_EXPIRATION:86400000}
+
+# ============================================================================
+# CONFIGURACIÓN DE RATE LIMITING
+# ============================================================================
+# Rate Limiting protege la API contra abuso y ataques DDoS
+# Limita el número de peticiones que un cliente puede hacer en un período de tiempo
+#
+# ALGORITMO: Token Bucket
+# - Cada cliente tiene un "bucket" (cubo) con tokens
+# - Cada petición consume 1 token
+# - Los tokens se rellenan a una tasa constante
+# - Si no hay tokens disponibles, la petición es rechazada con 429 Too Many Requests
+#
+# CONFIGURACIÓN:
+rate-limit:
+  # Habilitar/deshabilitar rate limiting globalmente
+  # true: Rate limiting activo
+  # false: Rate limiting desactivado (permitir todas las peticiones)
+  # PRODUCCIÓN: true
+  # DESARROLLO: false o true con límites generosos
+  enabled: ${RATE_LIMIT_ENABLED:true}
+
+  # Capacidad del bucket (número máximo de tokens)
+  # Representa el "burst" máximo de peticiones permitido
+  # Ejemplo: 100 permite hasta 100 peticiones en ráfaga
+  # RECOMENDADO:
+  # - API pública: 100-500
+  # - API interna: 1000-5000
+  # - Usuarios premium: 10000+
+  capacity: ${RATE_LIMIT_CAPACITY:100}
+
+  # Número de tokens que se rellenan por intervalo
+  # Define cuántas peticiones se permiten por período
+  # Ejemplo: 100 tokens con period=1 minuto = 100 peticiones/minuto
+  # RECOMENDADO:
+  # - API ligera: 100-500 req/min
+  # - API moderada: 500-1000 req/min
+  # - API pesada: 1000-5000 req/min
+  tokens: ${RATE_LIMIT_TOKENS:100}
+
+  # Período de rellenado en minutos
+  # Cada cuánto tiempo se rellenan los tokens
+  # Ejemplo: 1 = cada minuto, 5 = cada 5 minutos
+  # RECOMENDADO: 1 minuto (estándar de la industria)
+  period: ${RATE_LIMIT_PERIOD:1}
+
+  # Rate limiting por IP (true) o global (false)
+  # true: Cada IP tiene su propio límite (recomendado)
+  # false: Todas las peticiones comparten el mismo límite
+  # RECOMENDADO: true (por IP)
+  per-ip: ${RATE_LIMIT_PER_IP:true}
+
+  # Paths excluidos del rate limiting
+  # Útil para endpoints públicos, documentación, health checks
+  # Soporta patrones Ant-style (**, *, ?)
+  excluded-paths:
+    - /actuator/**           # Health checks y métricas
+    - /swagger-ui/**         # Documentación Swagger
+    - /v3/api-docs/**        # OpenAPI docs
+    - /favicon.ico           # Favicon
+    # Agregar más según necesidad:
+    # - /auth/login          # Login (considerar rate limiting separado)
+    # - /public/**           # Recursos públicos
+
+# EJEMPLOS DE CONFIGURACIÓN SEGÚN CASO DE USO:
+#
+# 1. API PÚBLICA GRATUITA (restrictiva):
+#    capacity: 50
+#    tokens: 50
+#    period: 1
+#    Resultado: 50 peticiones/minuto
+#
+# 2. API CON AUTENTICACIÓN (moderada):
+#    capacity: 200
+#    tokens: 200
+#    period: 1
+#    Resultado: 200 peticiones/minuto
+#
+# 3. API INTERNA (generosa):
+#    capacity: 1000
+#    tokens: 1000
+#    period: 1
+#    Resultado: 1000 peticiones/minuto
+#
+# 4. RATE LIMITING POR HORA:
+#    capacity: 5000
+#    tokens: 5000
+#    period: 60
+#    Resultado: 5000 peticiones/hora
 
 ---
 # ============================================================================

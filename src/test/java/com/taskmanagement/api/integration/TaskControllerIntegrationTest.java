@@ -138,7 +138,7 @@ class TaskControllerIntegrationTest extends AbstractIntegrationTest {
     // =========================================================================
 
     @BeforeEach
-    void setUp() {
+    protected void setUp() {
         // Limpiar base de datos antes de cada test
         taskRepository.deleteAll();
     }
