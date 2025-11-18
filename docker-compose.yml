@@ -40,17 +40,23 @@ services:
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-postgres}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
 
+      # Configuración de Redis Cache
+      # Usa el nombre del servicio 'redis' como hostname (Docker DNS interno)
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_CACHE_TYPE: redis
+
       # Pool de conexiones HikariCP
       SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: 10
       SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: 5
       SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT: 20000
 
       # JPA/Hibernate
-      SPRING_JPA_HIBERNATE_DDL_AUTO: validate  # En prod: validate (no modificar schema)
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update  # update para desarrollo, validate para producción
       SPRING_JPA_SHOW_SQL: false               # No mostrar SQL en logs (usa Logback)
 
       # JWT Configuration
-      JWT_SECRET: ${JWT_SECRET:-your-secret-key-change-in-production-min-256-bits}
+      JWT_SECRET: ${JWT_SECRET:-eW91ci1zZWNyZXQta2V5LWNoYW5nZS1pbi1wcm9kdWN0aW9uLW1pbi0yNTYtYml0cy1mb3Itc2VjdXJpdHk=}
       JWT_EXPIRATION: ${JWT_EXPIRATION:-86400000}  # 24 horas en milisegundos
 
       # Server
@@ -74,8 +80,8 @@ services:
       - "${APP_PORT:-8080}:8080"
 
     # Volúmenes (opcional, para desarrollo hot-reload)
-    # volumes:
-    #   - ./logs:/app/logs  # Persistir logs fuera del contenedor
+    volumes:
+      - ./logs:/app/logs  # Persistir logs fuera del contenedor
 
     # Limitar recursos del contenedor
     deploy:
@@ -87,10 +93,12 @@ services:
           cpus: '0.25'      # Mínimo 0.25 CPU reservado
           memory: 256M      # Mínimo 256MB reservado
 
-    # Dependencias: La app necesita que PostgreSQL esté saludable
+    # Dependencias: La app necesita que PostgreSQL y Redis estén saludables
     depends_on:
       postgres:
         condition: service_healthy  # Espera a que postgres pase el healthcheck
+      redis:
+        condition: service_healthy  # Espera a que redis pase el healthcheck
 
     # Red
     networks:
@@ -214,6 +222,66 @@ services:
       timeout: 5s          # Timeout de 5 segundos
       retries: 5           # 5 intentos antes de marcar como unhealthy
       start_period: 30s    # Espera 30 segundos antes de empezar healthchecks
+
+  # ============================================================================
+  # SERVICIO: REDIS CACHE
+  # ============================================================================
+  # Redis es un almacén de datos en memoria usado como caché distribuido
+  # VENTAJAS:
+  # - Latencia ultra-baja (microsegundos vs milisegundos de PostgreSQL)
+  # - Reduce carga en PostgreSQL (queries repetidas)
+  # - Compartir caché entre múltiples instancias de la aplicación
+  redis:
+    image: redis:7-alpine  # Redis 7 con Alpine Linux (imagen ligera)
+    container_name: taskmanager-redis
+    restart: unless-stopped
+
+    # (Opcional) Configuración de Redis
+    # command: redis-server --appendonly yes --requirepass yourpassword
+
+    environment:
+      # Zona horaria
+      TZ: America/Mexico_City
+
+      # (Opcional) Configuraciones de Redis via environment
+      # REDIS_REPLICATION_MODE: master
+
+    ports:
+      # Puerto expuesto: host:contenedor
+      # En producción, NO exponer este puerto externamente
+      - "${REDIS_PORT:-6379}:6379"
+
+    # volumes:
+      # Persistencia de datos de Redis (opcional)
+      # Por defecto, Redis es solo caché (datos volátiles)
+      # Descomentar si se quiere persistencia
+      # - redis_data:/data
+
+      # (Opcional) Configuración personalizada de Redis
+      # - ./redis.conf:/usr/local/etc/redis/redis.conf
+
+    # Limitar recursos del contenedor
+    # Redis es muy eficiente, no necesita muchos recursos
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'      # Máximo 0.5 CPU
+          memory: 512M     # Máximo 512MB de RAM
+        reservations:
+          cpus: '0.1'      # Mínimo 0.1 CPU reservado
+          memory: 128M     # Mínimo 128MB reservado
+
+    networks:
+      - taskmanager-network
+
+    healthcheck:
+      # Verificación de salud del contenedor
+      # redis-cli ping debe retornar "PONG"
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s        # Verifica cada 10 segundos
+      timeout: 3s          # Timeout de 3 segundos
+      retries: 3           # 3 intentos antes de marcar como unhealthy
+      start_period: 10s    # Espera 10 segundos antes de empezar healthchecks
 
   # (Opcional) Servicio de pgAdmin para administrar PostgreSQL
   # Interfaz web gráfica para gestionar bases de datos PostgreSQL

@@ -1,6 +1,7 @@
 package com.taskmanagement.api.controller;
 
 import com.taskmanagement.api.config.RateLimitProperties;
+import com.taskmanagement.api.constant.ApiVersion;
 import com.taskmanagement.api.service.RateLimitService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -35,7 +36,7 @@ import java.util.Map;
  * - API key específica
  */
 @RestController
-@RequestMapping("/admin/rate-limit")
+@RequestMapping(ApiVersion.V1 + "/admin/rate-limit")
 @RequiredArgsConstructor
 @Slf4j
 @Tag(

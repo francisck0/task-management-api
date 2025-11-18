@@ -1,5 +1,6 @@
 package com.taskmanagement.api.dto;
 
+import com.taskmanagement.api.model.TaskPriority;
 import com.taskmanagement.api.model.TaskStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Size;
@@ -78,6 +79,18 @@ public class TaskPatchDto {
         nullable = true
     )
     private TaskStatus status;
+
+    /**
+     * Prioridad de la tarea (opcional)
+     */
+    @Schema(
+        description = "Nueva prioridad de la tarea (opcional)",
+        example = "HIGH",
+        requiredMode = Schema.RequiredMode.NOT_REQUIRED,
+        allowableValues = {"LOW", "MEDIUM", "HIGH", "CRITICAL"},
+        nullable = true
+    )
+    private TaskPriority priority;
 
     /**
      * Fecha límite (opcional)

@@ -1,5 +1,6 @@
 package com.taskmanagement.api.exception;
 
+import com.taskmanagement.api.filter.CorrelationIdFilter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -59,10 +60,131 @@ public class GlobalExceptionHandler {
                 HttpStatus.NOT_FOUND.value(),
                 HttpStatus.NOT_FOUND.getReasonPhrase(),
                 ex.getMessage(),
-                request.getDescription(false).replace("uri=", "")
+                request.getDescription(false).replace("uri=", ""),
+                CorrelationIdFilter.getCurrentCorrelationId()
         );
 
         return new ResponseEntity<>(errorResponse, HttpStatus.NOT_FOUND);
+    }
+
+    /**
+     * Maneja la excepción DuplicateUsernameException.
+     *
+     * Se lanza cuando se intenta registrar un usuario con un username que ya existe.
+     * Devuelve un código 409 (CONFLICT).
+     *
+     * @param ex excepción lanzada
+     * @param request contexto de la petición HTTP
+     * @return respuesta de error con código 409
+     */
+    @ExceptionHandler(DuplicateUsernameException.class)
+    public ResponseEntity<ErrorResponse> handleDuplicateUsernameException(
+            DuplicateUsernameException ex,
+            WebRequest request) {
+
+        log.error("Username duplicado: {}", ex.getMessage());
+
+        ErrorResponse errorResponse = new ErrorResponse(
+                LocalDateTime.now(),
+                HttpStatus.CONFLICT.value(),
+                HttpStatus.CONFLICT.getReasonPhrase(),
+                ex.getMessage(),
+                request.getDescription(false).replace("uri=", ""),
+                CorrelationIdFilter.getCurrentCorrelationId()
+        );
+
+        return new ResponseEntity<>(errorResponse, HttpStatus.CONFLICT);
+    }
+
+    /**
+     * Maneja la excepción DuplicateEmailException.
+     *
+     * Se lanza cuando se intenta registrar un usuario con un email que ya existe.
+     * Devuelve un código 409 (CONFLICT).
+     *
+     * @param ex excepción lanzada
+     * @param request contexto de la petición HTTP
+     * @return respuesta de error con código 409
+     */
+    @ExceptionHandler(DuplicateEmailException.class)
+    public ResponseEntity<ErrorResponse> handleDuplicateEmailException(
+            DuplicateEmailException ex,
+            WebRequest request) {
+
+        log.error("Email duplicado: {}", ex.getMessage());
+
+        ErrorResponse errorResponse = new ErrorResponse(
+                LocalDateTime.now(),
+                HttpStatus.CONFLICT.value(),
+                HttpStatus.CONFLICT.getReasonPhrase(),
+                ex.getMessage(),
+                request.getDescription(false).replace("uri=", ""),
+                CorrelationIdFilter.getCurrentCorrelationId()
+        );
+
+        return new ResponseEntity<>(errorResponse, HttpStatus.CONFLICT);
+    }
+
+    /**
+     * Maneja la excepción RoleNotFoundException.
+     *
+     * Se lanza cuando no se encuentra un rol requerido en la base de datos.
+     * Devuelve un código 500 (INTERNAL_SERVER_ERROR) ya que indica un problema
+     * de configuración del sistema.
+     *
+     * @param ex excepción lanzada
+     * @param request contexto de la petición HTTP
+     * @return respuesta de error con código 500
+     */
+    @ExceptionHandler(RoleNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleRoleNotFoundException(
+            RoleNotFoundException ex,
+            WebRequest request) {
+
+        log.error("Rol no encontrado - problema de configuración: {}", ex.getMessage());
+
+        ErrorResponse errorResponse = new ErrorResponse(
+                LocalDateTime.now(),
+                HttpStatus.INTERNAL_SERVER_ERROR.value(),
+                HttpStatus.INTERNAL_SERVER_ERROR.getReasonPhrase(),
+                ex.getMessage(),
+                request.getDescription(false).replace("uri=", ""),
+                CorrelationIdFilter.getCurrentCorrelationId()
+        );
+
+        return new ResponseEntity<>(errorResponse, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    /**
+     * Maneja la excepción InvalidCredentialsException.
+     *
+     * Se lanza cuando las credenciales de login son inválidas.
+     * Devuelve un código 401 (UNAUTHORIZED).
+     *
+     * IMPORTANTE: El mensaje es genérico por seguridad, no indica si el username
+     * o password es el incorrecto para prevenir enumeración de usuarios.
+     *
+     * @param ex excepción lanzada
+     * @param request contexto de la petición HTTP
+     * @return respuesta de error con código 401
+     */
+    @ExceptionHandler(InvalidCredentialsException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidCredentialsException(
+            InvalidCredentialsException ex,
+            WebRequest request) {
+
+        log.warn("Intento de login fallido desde: {}", request.getDescription(false));
+
+        ErrorResponse errorResponse = new ErrorResponse(
+                LocalDateTime.now(),
+                HttpStatus.UNAUTHORIZED.value(),
+                HttpStatus.UNAUTHORIZED.getReasonPhrase(),
+                ex.getMessage(),
+                request.getDescription(false).replace("uri=", ""),
+                CorrelationIdFilter.getCurrentCorrelationId()
+        );
+
+        return new ResponseEntity<>(errorResponse, HttpStatus.UNAUTHORIZED);
     }
 
     /**
@@ -98,6 +220,7 @@ public class GlobalExceptionHandler {
                 HttpStatus.BAD_REQUEST.getReasonPhrase(),
                 "Error de validación en los datos proporcionados",
                 request.getDescription(false).replace("uri=", ""),
+                CorrelationIdFilter.getCurrentCorrelationId(),
                 validationErrors
         );
 
@@ -126,7 +249,8 @@ public class GlobalExceptionHandler {
                 HttpStatus.BAD_REQUEST.value(),
                 HttpStatus.BAD_REQUEST.getReasonPhrase(),
                 ex.getMessage(),
-                request.getDescription(false).replace("uri=", "")
+                request.getDescription(false).replace("uri=", ""),
+                CorrelationIdFilter.getCurrentCorrelationId()
         );
 
         return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
@@ -173,7 +297,8 @@ public class GlobalExceptionHandler {
                 HttpStatus.CONFLICT.value(),
                 HttpStatus.CONFLICT.getReasonPhrase(),
                 message,
-                request.getDescription(false).replace("uri=", "")
+                request.getDescription(false).replace("uri=", ""),
+                CorrelationIdFilter.getCurrentCorrelationId()
         );
 
         return new ResponseEntity<>(errorResponse, HttpStatus.CONFLICT);
@@ -220,7 +345,8 @@ public class GlobalExceptionHandler {
                 HttpStatus.BAD_REQUEST.value(),
                 HttpStatus.BAD_REQUEST.getReasonPhrase(),
                 message,
-                request.getDescription(false).replace("uri=", "")
+                request.getDescription(false).replace("uri=", ""),
+                CorrelationIdFilter.getCurrentCorrelationId()
         );
 
         return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
@@ -265,7 +391,8 @@ public class GlobalExceptionHandler {
                 HttpStatus.BAD_REQUEST.value(),
                 HttpStatus.BAD_REQUEST.getReasonPhrase(),
                 message,
-                request.getDescription(false).replace("uri=", "")
+                request.getDescription(false).replace("uri=", ""),
+                CorrelationIdFilter.getCurrentCorrelationId()
         );
 
         return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
@@ -297,7 +424,45 @@ public class GlobalExceptionHandler {
                 HttpStatus.FORBIDDEN.value(),
                 HttpStatus.FORBIDDEN.getReasonPhrase(),
                 "No tiene permisos para acceder a este recurso",
-                request.getDescription(false).replace("uri=", "")
+                request.getDescription(false).replace("uri=", ""),
+                CorrelationIdFilter.getCurrentCorrelationId()
+        );
+
+        return new ResponseEntity<>(errorResponse, HttpStatus.FORBIDDEN);
+    }
+
+    /**
+     * Maneja la excepción ForbiddenException (autorización personalizada).
+     *
+     * Se lanza cuando:
+     * - Usuario intenta acceder/modificar un recurso que no le pertenece
+     * - Usuario autenticado no tiene ownership del recurso
+     * - Intento de modificar/eliminar tarea de otro usuario
+     *
+     * Devuelve código 403 (FORBIDDEN).
+     *
+     * DIFERENCIA CON AccessDeniedException:
+     * - AccessDeniedException: Manejo de Spring Security (roles, @PreAuthorize)
+     * - ForbiddenException: Lógica de negocio personalizada (ownership de recursos)
+     *
+     * @param ex excepción de recurso prohibido
+     * @param request contexto de la petición HTTP
+     * @return respuesta de error con código 403
+     */
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<ErrorResponse> handleForbiddenException(
+            ForbiddenException ex,
+            WebRequest request) {
+
+        log.warn("Acceso prohibido: {}", ex.getMessage());
+
+        ErrorResponse errorResponse = new ErrorResponse(
+                LocalDateTime.now(),
+                HttpStatus.FORBIDDEN.value(),
+                HttpStatus.FORBIDDEN.getReasonPhrase(),
+                ex.getMessage(),
+                request.getDescription(false).replace("uri=", ""),
+                CorrelationIdFilter.getCurrentCorrelationId()
         );
 
         return new ResponseEntity<>(errorResponse, HttpStatus.FORBIDDEN);
@@ -328,7 +493,8 @@ public class GlobalExceptionHandler {
                 HttpStatus.INTERNAL_SERVER_ERROR.value(),
                 HttpStatus.INTERNAL_SERVER_ERROR.getReasonPhrase(),
                 "Ha ocurrido un error interno en el servidor. Por favor, contacte al administrador.",
-                request.getDescription(false).replace("uri=", "")
+                request.getDescription(false).replace("uri=", ""),
+                CorrelationIdFilter.getCurrentCorrelationId()
         );
 
         return new ResponseEntity<>(errorResponse, HttpStatus.INTERNAL_SERVER_ERROR);

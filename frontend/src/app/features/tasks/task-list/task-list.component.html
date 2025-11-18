@@ -1,0 +1,112 @@
+<div class="container">
+  <div class="page-header">
+    <div>
+      <h1>Tareas</h1>
+      <p class="text-secondary">Gestiona todas tus tareas</p>
+    </div>
+    <div class="header-actions">
+      <button (click)="showFilters.set(!showFilters())" class="btn btn-outline">
+        {{ showFilters() ? '✕ Cerrar Filtros' : '🔍 Filtros' }}
+      </button>
+      <a routerLink="/tasks/new" class="btn btn-primary">+ Nueva Tarea</a>
+    </div>
+  </div>
+
+  @if (showFilters()) {
+    <div class="card mb-3">
+      <div class="card-body">
+        <form [formGroup]="filterForm" (ngSubmit)="applyFilters()">
+          <div class="filters-grid">
+            <div class="form-group">
+              <label class="form-label">Estado</label>
+              <select formControlName="status" class="form-control">
+                <option value="">Todos</option>
+                <option [value]="TaskStatus.PENDING">Pendiente</option>
+                <option [value]="TaskStatus.IN_PROGRESS">En Progreso</option>
+                <option [value]="TaskStatus.COMPLETED">Completada</option>
+                <option [value]="TaskStatus.CANCELLED">Cancelada</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Prioridad</label>
+              <select formControlName="priority" class="form-control">
+                <option value="">Todas</option>
+                <option [value]="TaskPriority.LOW">Baja</option>
+                <option [value]="TaskPriority.MEDIUM">Media</option>
+                <option [value]="TaskPriority.HIGH">Alta</option>
+                <option [value]="TaskPriority.CRITICAL">Crítica</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Buscar</label>
+              <input type="text" formControlName="search" class="form-control" placeholder="Título o descripción">
+            </div>
+          </div>
+          <div class="filter-actions">
+            <button type="submit" class="btn btn-primary">Aplicar Filtros</button>
+            <button type="button" (click)="clearFilters()" class="btn btn-outline">Limpiar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  }
+
+  @if (loading()) {
+    <app-loading></app-loading>
+  } @else if (error()) {
+    <div class="alert alert-danger">{{ error() }}</div>
+  } @else {
+    @if (tasksPage(); as page) {
+      @if (page.content.length === 0) {
+      <div class="card">
+        <div class="card-body empty-state">
+          <p class="text-secondary">No se encontraron tareas</p>
+          <a routerLink="/tasks/new" class="btn btn-primary mt-2">Crear Primera Tarea</a>
+        </div>
+      </div>
+    } @else {
+      <div class="tasks-grid">
+        @for (task of page.content; track task.id) {
+          <div class="task-card" [routerLink]="['/tasks', task.id]">
+            <div class="task-header">
+              <h3 class="task-title">{{ task.title }}</h3>
+              <div class="task-badges">
+                @if (task.priority) {
+                  <span class="badge" [ngClass]="{
+                    'badge-secondary': task.priority === 'LOW',
+                    'badge-warning': task.priority === 'MEDIUM',
+                    'badge-danger': task.priority === 'HIGH' || task.priority === 'CRITICAL'
+                  }">
+                    {{ task.priority | taskPriority }}
+                  </span>
+                }
+                <span class="badge" [ngClass]="{
+                  'badge-warning': task.status === 'PENDING',
+                  'badge-primary': task.status === 'IN_PROGRESS',
+                  'badge-success': task.status === 'COMPLETED',
+                  'badge-secondary': task.status === 'CANCELLED'
+                }">
+                  {{ task.status | taskStatus }}
+                </span>
+              </div>
+            </div>
+            @if (task.description) {
+              <p class="task-description">{{ task.description }}</p>
+            }
+            <div class="task-footer">
+              <span class="task-date text-secondary">
+                {{ task.createdAt | dateFormat }}
+              </span>
+              <button (click)="deleteTask(task.id, $event)" class="btn btn-sm btn-danger">
+                Eliminar
+              </button>
+            </div>
+          </div>
+        }
+      </div>
+
+      <app-pagination [page]="page" (pageChange)="onPageChange($event)"></app-pagination>
+    }
+    }
+  }
+</div>

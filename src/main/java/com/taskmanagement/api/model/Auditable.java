@@ -73,26 +73,49 @@ public abstract class Auditable {
     private LocalDateTime updatedAt;
 
     /**
-     * Usuario que creó el registro (opcional).
+     * Usuario que creó el registro.
      *
-     * @CreatedBy: Spring Data JPA asigna el usuario que creó el registro.
-     *             Requiere implementar AuditorAware<String> para obtener el usuario actual.
+     * @CreatedBy: Spring Data JPA asigna automáticamente el username del usuario autenticado
+     *             que creó el registro usando AuditorAware.
      *
-     * Comentado por defecto. Descomentar cuando se implemente autenticación.
+     * FUNCIONAMIENTO:
+     * 1. Usuario hace login y obtiene JWT
+     * 2. Usuario crea/modifica una entidad
+     * 3. Spring Security tiene el usuario en el contexto
+     * 4. AuditorAware obtiene el username del contexto
+     * 5. @CreatedBy asigna ese username automáticamente
+     *
+     * VENTAJAS:
+     * - Trazabilidad completa: saber QUIÉN creó cada registro
+     * - Auditoría automática sin código manual
+     * - Útil para compliance y regulaciones
+     * - Debugging: identificar quién causó cambios problemáticos
+     *
+     * updatable = false: No se puede cambiar quién creó el registro
      */
-    // @CreatedBy
-    // @Column(name = "created_by", updatable = false)
-    // private String createdBy;
+    @CreatedBy
+    @Column(name = "created_by", updatable = false, length = 50)
+    private String createdBy;
 
     /**
-     * Usuario que modificó el registro por última vez (opcional).
+     * Usuario que modificó el registro por última vez.
      *
-     * @LastModifiedBy: Spring Data JPA asigna el usuario que modificó el registro.
-     *                  Requiere implementar AuditorAware<String> para obtener el usuario actual.
+     * @LastModifiedBy: Spring Data JPA asigna automáticamente el username del usuario
+     *                  que realizó la última modificación.
      *
-     * Comentado por defecto. Descomentar cuando se implemente autenticación.
+     * FUNCIONAMIENTO:
+     * - Se actualiza automáticamente en cada modificación
+     * - Usa el mismo AuditorAware que @CreatedBy
+     * - Permite rastrear quién fue el último en editar
+     *
+     * CASO DE USO:
+     * Si una tarea tiene un bug o error, puedes ver quién la modificó por última vez.
+     *
+     * DIFERENCIA CON createdBy:
+     * - createdBy: NUNCA cambia (quien la creó originalmente)
+     * - lastModifiedBy: Cambia con cada actualización (último editor)
      */
-    // @LastModifiedBy
-    // @Column(name = "last_modified_by")
-    // private String lastModifiedBy;
+    @LastModifiedBy
+    @Column(name = "last_modified_by", length = 50)
+    private String lastModifiedBy;
 }

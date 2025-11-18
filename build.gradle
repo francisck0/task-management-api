@@ -41,6 +41,16 @@ dependencies {
 	compileOnly 'org.projectlombok:lombok'
 	annotationProcessor 'org.projectlombok:lombok'
 
+	// MapStruct - Generación automática de mappers en tiempo de compilación
+	// Más eficiente que mappers manuales (sin reflexión en runtime)
+	implementation 'org.mapstruct:mapstruct:1.6.3'
+	annotationProcessor 'org.mapstruct:mapstruct-processor:1.6.3'
+
+	// Integración Lombok + MapStruct
+	// IMPORTANTE: Este annotationProcessor DEBE ir DESPUÉS de lombok
+	// para que MapStruct pueda ver los getters/setters generados por Lombok
+	annotationProcessor 'org.projectlombok:lombok-mapstruct-binding:0.2.0'
+
 	// SpringDoc OpenAPI - Documentación automática de la API (Swagger UI)
 	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.3.0'
 
@@ -53,6 +63,9 @@ dependencies {
 	// Spring Security - Seguridad y autenticación
 	implementation 'org.springframework.boot:spring-boot-starter-security'
 
+	// Spring AOP - Programación Orientada a Aspectos para logging y auditoría
+	implementation 'org.springframework.boot:spring-boot-starter-aop'
+
 	// JWT - Para autenticación con tokens JWT
 	implementation 'io.jsonwebtoken:jjwt-api:0.12.3'
 	runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.3'
@@ -60,6 +73,35 @@ dependencies {
 
 	// Bucket4j - Rate Limiting (algoritmo Token Bucket)
 	implementation 'com.bucket4j:bucket4j-core:8.10.1'
+
+	// ========================================================================
+	// REDIS CACHE
+	// ========================================================================
+	// Spring Data Redis - Integración con Redis para caché distribuido
+	// Redis es un almacén de datos en memoria que permite:
+	// - Caché de alta velocidad (microsegundos de latencia)
+	// - Reduce carga en PostgreSQL (menos queries repetidas)
+	// - Compartir caché entre múltiples instancias de la aplicación
+	implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+
+	// Lettuce - Cliente Redis asíncrono y reactivo (incluido por defecto)
+	// Alternativa: Jedis (cliente síncrono)
+	// Lettuce es la opción recomendada por Spring Boot:
+	// - Soporte para operaciones asíncronas y reactivas
+	// - Connection pooling eficiente
+	// - Thread-safe
+	// - Mejor rendimiento en alta concurrencia
+
+	// Spring Cache - Abstracción de caché de Spring
+	// Ya viene incluido en spring-boot-starter-cache
+	// Proporciona anotaciones: @Cacheable, @CacheEvict, @CachePut
+	implementation 'org.springframework.boot:spring-boot-starter-cache'
+
+	// Jackson Datatype JSR310 - Serialización de LocalDateTime en Redis
+	// Ya incluido en spring-boot-starter-web, pero especificado para claridad
+	// Permite serializar/deserializar objetos Java con fechas (LocalDateTime, LocalDate, etc.)
+	// Sin esto, Redis no podría cachear objetos Task que tienen LocalDateTime
+	// ========================================================================
 
 	// Spring Boot Starter Test - Para pruebas unitarias e integración
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
@@ -78,3 +120,71 @@ dependencies {
 tasks.named('test') {
 	useJUnitPlatform()
 }
+
+// ============================================================================
+// SPRING BOOT LAYERED JAR CONFIGURATION
+// ============================================================================
+// Habilita la creación de JARs en capas (layers) para optimizar caché de Docker
+//
+// QUÉ SON LAYERED JARS:
+// Spring Boot puede dividir el JAR en capas lógicas:
+// 1. dependencies: Dependencias externas (raramente cambian)
+// 2. spring-boot-loader: Spring Boot loader (casi nunca cambia)
+// 3. snapshot-dependencies: Dependencias SNAPSHOT (pueden cambiar)
+// 4. application: Tu código (cambia frecuentemente)
+//
+// VENTAJAS EN DOCKER:
+// - Docker cachea cada capa por separado
+// - Si solo cambias tu código, Docker solo reconstruye la capa 'application'
+// - Las capas de dependencias permanecen cacheadas
+// - Builds 10-100x más rápidos en cambios incrementales
+// - Menos transferencia de datos al subir a registry
+//
+// EJEMPLO DE MEJORA:
+// Sin layers:
+//   - Cambio en código → Rebuild de JAR completo (150MB)
+//   - Push a registry: 150MB
+//   - Pull en servidor: 150MB
+//
+// Con layers:
+//   - Cambio en código → Rebuild solo capa application (5MB)
+//   - Push a registry: 5MB
+//   - Pull en servidor: 5MB
+//   - Las otras capas (145MB) ya están cacheadas
+//
+// VERIFICAR CAPAS:
+// Después de compilar, puedes ver las capas con:
+//   java -Djarmode=layertools -jar build/libs/api-0.0.1-SNAPSHOT.jar list
+//
+// EXTRAER CAPAS:
+//   java -Djarmode=layertools -jar build/libs/api-0.0.1-SNAPSHOT.jar extract
+//
+tasks.named('bootJar') {
+	// Habilitar layered JARs
+	// En Spring Boot 3.x, layered está habilitado por defecto
+	// Solo necesitamos asegurar que incluya las herramientas de capas
+	layered {
+		enabled = true
+	}
+}
+
+// ============================================================================
+// CONFIGURACIÓN PERSONALIZADA DE CAPAS (OPCIONAL)
+// ============================================================================
+// Si necesitas personalizar qué dependencias van en qué capa, puedes hacerlo así:
+//
+// bootJar {
+//     layered {
+//         application {
+//             dependencies {
+//                 // Dependencias específicas en capa separada
+//                 layer("custom-dependencies") {
+//                     include "com.example:*"
+//                 }
+//             }
+//         }
+//     }
+// }
+//
+// Para la mayoría de aplicaciones, la configuración por defecto es suficiente.
+// ============================================================================

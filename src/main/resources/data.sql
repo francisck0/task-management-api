@@ -104,17 +104,122 @@ WHERE NOT EXISTS (
 );
 
 -- ============================================================================
--- RESUMEN DE USUARIOS CREADOS:
+-- 4. CREAR TAREAS DE EJEMPLO
 -- ============================================================================
+-- Creamos tareas de ejemplo asignadas a los usuarios de prueba
+-- para demostrar la funcionalidad de ownership
+-- ============================================================================
+
+-- Tareas del usuario ADMIN
+INSERT INTO tasks (title, description, status, due_date, user_id, created_at, updated_at)
+SELECT
+    'Revisar documentación del proyecto',
+    'Revisar y actualizar toda la documentación técnica del proyecto Task Management API',
+    'IN_PROGRESS',
+    CURRENT_TIMESTAMP + INTERVAL '7 days',
+    (SELECT id FROM users WHERE username = 'admin'),
+    CURRENT_TIMESTAMP,
+    CURRENT_TIMESTAMP
+WHERE NOT EXISTS (
+    SELECT 1 FROM tasks WHERE title = 'Revisar documentación del proyecto'
+);
+
+INSERT INTO tasks (title, description, status, due_date, user_id, created_at, updated_at)
+SELECT
+    'Configurar servidor de producción',
+    'Configurar el entorno de producción con Docker y Kubernetes',
+    'PENDING',
+    CURRENT_TIMESTAMP + INTERVAL '14 days',
+    (SELECT id FROM users WHERE username = 'admin'),
+    CURRENT_TIMESTAMP,
+    CURRENT_TIMESTAMP
+WHERE NOT EXISTS (
+    SELECT 1 FROM tasks WHERE title = 'Configurar servidor de producción'
+);
+
+INSERT INTO tasks (title, description, status, due_date, user_id, created_at, updated_at)
+SELECT
+    'Implementar monitoreo con Prometheus',
+    'Configurar Prometheus y Grafana para monitoreo de la aplicación',
+    'COMPLETED',
+    CURRENT_TIMESTAMP - INTERVAL '2 days',
+    (SELECT id FROM users WHERE username = 'admin'),
+    CURRENT_TIMESTAMP - INTERVAL '5 days',
+    CURRENT_TIMESTAMP - INTERVAL '2 days'
+WHERE NOT EXISTS (
+    SELECT 1 FROM tasks WHERE title = 'Implementar monitoreo con Prometheus'
+);
+
+-- Tareas del usuario TESTUSER
+INSERT INTO tasks (title, description, status, due_date, user_id, created_at, updated_at)
+SELECT
+    'Comprar ingredientes para la cena',
+    'Comprar tomates, cebolla, ajo y pasta en el supermercado',
+    'PENDING',
+    CURRENT_TIMESTAMP + INTERVAL '1 day',
+    (SELECT id FROM users WHERE username = 'testuser'),
+    CURRENT_TIMESTAMP,
+    CURRENT_TIMESTAMP
+WHERE NOT EXISTS (
+    SELECT 1 FROM tasks WHERE title = 'Comprar ingredientes para la cena'
+);
+
+INSERT INTO tasks (title, description, status, due_date, user_id, created_at, updated_at)
+SELECT
+    'Hacer ejercicio',
+    'Ir al gimnasio por 1 hora - enfocarse en cardio y pesas',
+    'IN_PROGRESS',
+    CURRENT_TIMESTAMP + INTERVAL '1 day',
+    (SELECT id FROM users WHERE username = 'testuser'),
+    CURRENT_TIMESTAMP,
+    CURRENT_TIMESTAMP
+WHERE NOT EXISTS (
+    SELECT 1 FROM tasks WHERE title = 'Hacer ejercicio'
+);
+
+INSERT INTO tasks (title, description, status, due_date, user_id, created_at, updated_at)
+SELECT
+    'Leer capítulo 5 del libro de Java',
+    'Estudiar el capítulo sobre concurrencia y threads en Java',
+    'COMPLETED',
+    CURRENT_TIMESTAMP - INTERVAL '1 day',
+    (SELECT id FROM users WHERE username = 'testuser'),
+    CURRENT_TIMESTAMP - INTERVAL '3 days',
+    CURRENT_TIMESTAMP - INTERVAL '1 day'
+WHERE NOT EXISTS (
+    SELECT 1 FROM tasks WHERE title = 'Leer capítulo 5 del libro de Java'
+);
+
+-- ============================================================================
+-- RESUMEN DE DATOS INSERTADOS:
+-- ============================================================================
+--
+-- USUARIOS CREADOS:
+-- -----------------
 -- 1. Usuario Administrador:
 --    - Username: admin
 --    - Password: admin123
 --    - Email: admin@taskmanagement.com
 --    - Roles: ROLE_ADMIN, ROLE_USER
+--    - Tareas: 3 (1 PENDING, 1 IN_PROGRESS, 1 COMPLETED)
 --
 -- 2. Usuario Normal:
 --    - Username: testuser
 --    - Password: test123
 --    - Email: test@taskmanagement.com
 --    - Roles: ROLE_USER
+--    - Tareas: 3 (1 PENDING, 1 IN_PROGRESS, 1 COMPLETED)
+--
+-- TAREAS CREADAS:
+-- ---------------
+-- Total: 6 tareas
+-- - 2 PENDING
+-- - 2 IN_PROGRESS
+-- - 2 COMPLETED
+--
+-- SEGURIDAD:
+-- ----------
+-- - Cada tarea está asignada a un usuario específico (user_id)
+-- - Solo el propietario puede ver/modificar sus tareas
+-- - La verificación de ownership se realiza en TaskServiceImpl
 -- ============================================================================

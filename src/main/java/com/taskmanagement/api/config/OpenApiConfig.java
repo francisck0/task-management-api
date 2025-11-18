@@ -1,9 +1,12 @@
 package com.taskmanagement.api.config;
 
+import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.info.Contact;
 import io.swagger.v3.oas.models.info.Info;
 import io.swagger.v3.oas.models.info.License;
+import io.swagger.v3.oas.models.security.SecurityRequirement;
+import io.swagger.v3.oas.models.security.SecurityScheme;
 import io.swagger.v3.oas.models.servers.Server;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -57,16 +60,81 @@ public class OpenApiConfig {
      * Define metadatos de la API como título, descripción, versión, etc.
      * Esta información se muestra en la página principal de Swagger UI.
      *
+     * SEGURIDAD JWT:
+     * - Configura el esquema de seguridad Bearer JWT
+     * - Agrega el botón "Authorize" en Swagger UI
+     * - Permite probar endpoints protegidos ingresando el token JWT
+     *
+     * CÓMO USAR EN SWAGGER UI:
+     * 1. Ir a /api/v1/swagger-ui.html
+     * 2. Hacer clic en el botón "Authorize" (candado verde)
+     * 3. Ingresar el token JWT (sin "Bearer ")
+     * 4. Hacer clic en "Authorize"
+     * 5. Ahora puedes probar endpoints protegidos
+     *
      * @return configuración OpenAPI personalizada
      */
     @Bean
     public OpenAPI customOpenAPI() {
+        // Nombre del esquema de seguridad (debe coincidir con @SecurityRequirement en controllers)
+        final String securitySchemeName = "bearer-jwt";
+
         return new OpenAPI()
                 .info(apiInfo())
                 .servers(List.of(
                         localServer(),
                         productionServer()
-                ));
+                ))
+                // Configurar el esquema de seguridad JWT
+                .components(new Components()
+                        .addSecuritySchemes(securitySchemeName,
+                                new SecurityScheme()
+                                        .type(SecurityScheme.Type.HTTP)
+                                        .scheme("bearer")
+                                        .bearerFormat("JWT")
+                                        .description("""
+                                                # Autenticación JWT
+
+                                                Para acceder a los endpoints protegidos, necesitas un token JWT.
+
+                                                ## Cómo obtener el token:
+
+                                                1. **Registrar un usuario** (si no tienes cuenta):
+                                                   ```
+                                                   POST /auth/register
+                                                   {
+                                                     "username": "usuario@ejemplo.com",
+                                                     "password": "password123"
+                                                   }
+                                                   ```
+
+                                                2. **Iniciar sesión**:
+                                                   ```
+                                                   POST /auth/login
+                                                   {
+                                                     "username": "usuario@ejemplo.com",
+                                                     "password": "password123"
+                                                   }
+                                                   ```
+
+                                                3. **Copiar el token** del campo `token` en la respuesta
+
+                                                4. **Pegar el token aquí** (sin el prefijo "Bearer ")
+
+                                                ## Ejemplo de token:
+                                                ```
+                                                eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyQGV4YW1wbGUuY29tIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c
+                                                ```
+
+                                                ## Expiración:
+                                                Los tokens expiran después de 24 horas por defecto.
+                                                Si recibes error 401, necesitas obtener un nuevo token.
+                                                """)
+                        )
+                )
+                // Aplicar seguridad JWT globalmente a todos los endpoints
+                // (Los endpoints públicos como /auth/** están excluidos en SecurityConfig)
+                .addSecurityItem(new SecurityRequirement().addList(securitySchemeName));
     }
 
     /**
@@ -89,10 +157,22 @@ public class OpenApiConfig {
 
                         Esta API permite gestionar tareas con operaciones CRUD completas.
 
+                        ## 🔐 Autenticación
+
+                        **La mayoría de los endpoints requieren autenticación JWT.**
+
+                        1. **Regístrate** en `POST /auth/register`
+                        2. **Inicia sesión** en `POST /auth/login` para obtener tu token
+                        3. Usa el botón **"Authorize"** 🔓 arriba para ingresar tu token
+                        4. ¡Ahora puedes probar todos los endpoints protegidos!
+
                         ## Características
+                        - ✅ Autenticación JWT con Spring Security
                         - ✅ Crear, leer, actualizar y eliminar tareas
                         - ✅ Búsqueda por estado y título
+                        - ✅ Paginación en todos los endpoints de consulta
                         - ✅ Actualización parcial (PATCH)
+                        - ✅ Soft delete con papelera de reciclaje
                         - ✅ Auditoría automática (createdAt, updatedAt)
                         - ✅ Validación de datos con Bean Validation
                         - ✅ Manejo de errores estandarizado
@@ -109,6 +189,8 @@ public class OpenApiConfig {
                         - `201 Created` - Recurso creado exitosamente
                         - `204 No Content` - Operación exitosa sin contenido
                         - `400 Bad Request` - Error de validación
+                        - `401 Unauthorized` - No autenticado o token inválido
+                        - `403 Forbidden` - Sin permisos para el recurso
                         - `404 Not Found` - Recurso no encontrado
                         - `500 Internal Server Error` - Error del servidor
 
@@ -152,10 +234,13 @@ public class OpenApiConfig {
      *
      * Define la URL base del servidor local.
      * Swagger UI usará esta URL para hacer las peticiones de prueba.
+     *
+     * NOTA: La URL solo incluye /api (context path)
+     * La versión (/v1) está en los controladores usando ApiVersion.V1
      */
     private Server localServer() {
         return new Server()
-                .url("http://localhost:8080/api/v1")
+                .url("http://localhost:8080/api")
                 .description("Servidor de desarrollo local");
     }
 
@@ -164,41 +249,13 @@ public class OpenApiConfig {
      *
      * Define la URL del servidor de producción.
      * Los usuarios pueden cambiar entre servidores en Swagger UI.
+     *
+     * NOTA: La URL solo incluye el dominio base
+     * La versión (/v1) está en los controladores usando ApiVersion.V1
      */
     private Server productionServer() {
         return new Server()
-                .url("https://api.taskmanagement.com/v1")
+                .url("https://api.taskmanagement.com")
                 .description("Servidor de producción");
     }
-
-    // =========================================================================
-    // CONFIGURACIÓN ADICIONAL (Opcional)
-    // =========================================================================
-
-    /**
-     * Si en el futuro implementas autenticación (JWT, OAuth, etc.),
-     * puedes agregar SecuritySchemes aquí:
-     *
-     * @Bean
-     * public OpenAPI secureOpenAPI() {
-     *     return new OpenAPI()
-     *         .components(new Components()
-     *             .addSecuritySchemes("bearer-jwt",
-     *                 new SecurityScheme()
-     *                     .type(SecurityScheme.Type.HTTP)
-     *                     .scheme("bearer")
-     *                     .bearerFormat("JWT")
-     *                     .description("JWT token obtenido del endpoint /auth/login")
-     *             )
-     *         )
-     *         .security(List.of(
-     *             new SecurityRequirement().addList("bearer-jwt")
-     *         ));
-     * }
-     *
-     * Y en los controllers:
-     * @SecurityRequirement(name = "bearer-jwt")
-     * @GetMapping("/protected-endpoint")
-     * public ResponseEntity<?> protectedEndpoint() { ... }
-     */
 }

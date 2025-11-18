@@ -20,10 +20,17 @@ import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
  * Con esta configuración, Spring Data JPA automáticamente:
  * - Rellena @CreatedDate cuando se crea una entidad
  * - Actualiza @LastModifiedDate cuando se modifica una entidad
- * - (Opcional) Rellena @CreatedBy y @LastModifiedBy si se implementa AuditorAware
+ * - Rellena @CreatedBy y @LastModifiedBy usando AuditorAwareImpl
+ *
+ * CONFIGURACIÓN DE AUDITOR:
+ * - auditorAwareRef = "auditorAware": Referencia al bean AuditorAwareImpl
+ * - Este bean obtiene el username del usuario autenticado desde SecurityContext
+ * - Se asigna automáticamente a campos @CreatedBy y @LastModifiedBy
+ *
+ * @see com.taskmanagement.api.config.AuditorAwareImpl
  */
 @SpringBootApplication
-@EnableJpaAuditing
+@EnableJpaAuditing(auditorAwareRef = "auditorAware")
 public class TaskManagementApiApplication {
 
 	/**

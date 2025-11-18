@@ -10,17 +10,23 @@ import java.util.List;
 /**
  * DTO para respuestas de autenticación.
  *
- * Contiene el token JWT y la información del usuario autenticado.
+ * Contiene el Access Token (JWT) y el Refresh Token para renovación.
+ *
+ * TOKENS:
+ * - accessToken: JWT de corta duración (1 hora) para acceder a recursos protegidos
+ * - refreshToken: Token de larga duración (7 días) para renovar el access token
  */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Schema(
-    description = "Respuesta de autenticación con token JWT y datos del usuario",
+    description = "Respuesta de autenticación con access token, refresh token y datos del usuario",
     example = """
         {
-          "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+          "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+          "refreshToken": "550e8400-e29b-41d4-a716-446655440000",
           "type": "Bearer",
+          "expiresIn": 3600000,
           "username": "admin",
           "email": "admin@taskmanagement.com",
           "roles": ["ROLE_ADMIN", "ROLE_USER"]
@@ -30,10 +36,16 @@ import java.util.List;
 public class AuthResponse {
 
     @Schema(
-        description = "Token JWT para autenticación en peticiones subsecuentes",
+        description = "Access Token (JWT) para autenticación en peticiones subsecuentes. Duración corta (1 hora).",
         example = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
     )
-    private String token;
+    private String accessToken;
+
+    @Schema(
+        description = "Refresh Token para renovar el access token cuando expire. Duración larga (7 días).",
+        example = "550e8400-e29b-41d4-a716-446655440000"
+    )
+    private String refreshToken;
 
     @Schema(
         description = "Tipo de token (siempre 'Bearer')",
@@ -41,6 +53,12 @@ public class AuthResponse {
         defaultValue = "Bearer"
     )
     private String type = "Bearer";
+
+    @Schema(
+        description = "Tiempo de expiración del access token en milisegundos",
+        example = "3600000"
+    )
+    private Long expiresIn;
 
     @Schema(
         description = "Nombre de usuario del usuario autenticado",
@@ -61,10 +79,24 @@ public class AuthResponse {
     private List<String> roles;
 
     /**
-     * Constructor sin el campo 'type' (será 'Bearer' por defecto)
+     * Constructor con todos los campos necesarios.
      */
-    public AuthResponse(String token, String username, String email, List<String> roles) {
-        this.token = token;
+    public AuthResponse(String accessToken, String refreshToken, Long expiresIn,
+                       String username, String email, List<String> roles) {
+        this.accessToken = accessToken;
+        this.refreshToken = refreshToken;
+        this.type = "Bearer";
+        this.expiresIn = expiresIn;
+        this.username = username;
+        this.email = email;
+        this.roles = roles;
+    }
+
+    /**
+     * Constructor sin refresh token (para compatibilidad)
+     */
+    public AuthResponse(String accessToken, String username, String email, List<String> roles) {
+        this.accessToken = accessToken;
         this.type = "Bearer";
         this.username = username;
         this.email = email;

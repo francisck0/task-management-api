@@ -1,0 +1,88 @@
+<div class="container">
+  <div class="page-header">
+    <h1>{{ isEditMode() ? 'Editar Tarea' : 'Nueva Tarea' }}</h1>
+    <a routerLink="/tasks" class="btn btn-outline">← Volver</a>
+  </div>
+
+  @if (error()) {
+    <div class="alert alert-danger">{{ error() }}</div>
+  }
+
+  <div class="card">
+    <div class="card-body">
+      <form [formGroup]="taskForm" (ngSubmit)="onSubmit()">
+        <div class="form-group">
+          <label for="title" class="form-label">Título *</label>
+          <input
+            type="text"
+            id="title"
+            formControlName="title"
+            class="form-control"
+            [class.error]="title?.invalid && title?.touched"
+            placeholder="Título de la tarea">
+          @if (title?.invalid && title?.touched) {
+            <span class="form-error">
+              @if (title?.errors?.['required']) { El título es requerido }
+              @if (title?.errors?.['maxlength']) { Máximo 100 caracteres }
+            </span>
+          }
+        </div>
+
+        <div class="form-group">
+          <label for="description" class="form-label">Descripción</label>
+          <textarea
+            id="description"
+            formControlName="description"
+            class="form-control"
+            rows="4"
+            placeholder="Descripción detallada..."></textarea>
+          @if (description?.invalid && description?.touched) {
+            <span class="form-error">Máximo 1000 caracteres</span>
+          }
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="status" class="form-label">Estado *</label>
+            <select id="status" formControlName="status" class="form-control">
+              <option [value]="TaskStatus.PENDING">Pendiente</option>
+              <option [value]="TaskStatus.IN_PROGRESS">En Progreso</option>
+              <option [value]="TaskStatus.COMPLETED">Completada</option>
+              <option [value]="TaskStatus.CANCELLED">Cancelada</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="priority" class="form-label">Prioridad</label>
+            <select id="priority" formControlName="priority" class="form-control">
+              <option [value]="TaskPriority.LOW">Baja</option>
+              <option [value]="TaskPriority.MEDIUM">Media</option>
+              <option [value]="TaskPriority.HIGH">Alta</option>
+              <option [value]="TaskPriority.CRITICAL">Crítica</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="dueDate" class="form-label">Fecha Límite</label>
+            <input
+              type="datetime-local"
+              id="dueDate"
+              formControlName="dueDate"
+              class="form-control">
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary" [disabled]="loading()">
+            @if (loading()) {
+              <span class="spinner"></span> Guardando...
+            } @else {
+              {{ isEditMode() ? 'Actualizar' : 'Crear' }} Tarea
+            }
+          </button>
+          <a routerLink="/tasks" class="btn btn-outline">Cancelar</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>

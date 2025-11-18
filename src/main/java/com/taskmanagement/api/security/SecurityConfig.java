@@ -43,7 +43,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthFilter;
-    private final UserRepository userRepository;
+    private final UserDetailsService userDetailsService;
 
     /**
      * Configura la cadena de filtros de seguridad
@@ -56,21 +56,24 @@ public class SecurityConfig {
                 // Deshabilitar CSRF (no necesario para APIs REST stateless con JWT)
                 .csrf(AbstractHttpConfigurer::disable)
 
+                // Habilitar CORS
+                .cors(cors -> cors.configure(http))
+
                 // Configurar autorización de peticiones
                 .authorizeHttpRequests(auth -> auth
                         // Rutas públicas (no requieren autenticación)
                         .requestMatchers(
-                                "/api/v1/auth/**",           // Endpoints de autenticación
+                                "/v1/auth/**",           // Endpoints de autenticación
                                 "/swagger-ui/**",            // Swagger UI
                                 "/v3/api-docs/**",           // OpenAPI docs
                                 "/swagger-resources/**",     // Swagger resources
                                 "/webjars/**",               // Webjars (para Swagger)
-                                "/api/v1/actuator/health",   // Health check público
-                                "/api/v1/actuator/info"      // Info público
+                                "/v1/actuator/health",   // Health check público
+                                "/v1/actuator/info"      // Info público
                         ).permitAll()
 
                         // Actuator endpoints protegidos (requieren autenticación)
-                        .requestMatchers("/api/v1/actuator/**").authenticated()
+                        .requestMatchers("/v1/actuator/**").authenticated()
 
                         // Todas las demás rutas requieren autenticación
                         .anyRequest().authenticated()
@@ -92,25 +95,12 @@ public class SecurityConfig {
     }
 
     /**
-     * Define cómo cargar los usuarios desde la base de datos
-     *
-     * Spring Security usa este servicio para autenticación
-     */
-    @Bean
-    public UserDetailsService userDetailsService() {
-        return username -> userRepository.findByUsername(username)
-                .orElseThrow(() -> new UsernameNotFoundException(
-                        "Usuario no encontrado: " + username
-                ));
-    }
-
-    /**
      * Proveedor de autenticación que usa UserDetailsService y PasswordEncoder
      */
     @Bean
     public AuthenticationProvider authenticationProvider() {
         DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
-        authProvider.setUserDetailsService(userDetailsService());
+        authProvider.setUserDetailsService(userDetailsService);
         authProvider.setPasswordEncoder(passwordEncoder());
         return authProvider;
     }

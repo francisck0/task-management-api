@@ -1,0 +1,132 @@
+<div class="auth-container">
+  <div class="auth-card">
+    <div class="auth-header">
+      <h1>Crear Cuenta</h1>
+      <p class="text-secondary">Regístrate para comenzar a gestionar tus tareas</p>
+    </div>
+
+    @if (error()) {
+      <div class="alert alert-danger">
+        {{ error() }}
+      </div>
+    }
+
+    <form [formGroup]="registerForm" (ngSubmit)="onSubmit()" class="auth-form">
+      <div class="form-group">
+        <label for="username" class="form-label">Usuario *</label>
+        <input
+          type="text"
+          id="username"
+          formControlName="username"
+          class="form-control"
+          [class.error]="username?.invalid && username?.touched"
+          placeholder="Ingrese un nombre de usuario">
+        @if (username?.invalid && username?.touched) {
+          <span class="form-error">
+            @if (username?.errors?.['required']) {
+              El usuario es requerido
+            }
+            @if (username?.errors?.['minlength']) {
+              Mínimo 3 caracteres
+            }
+            @if (username?.errors?.['maxlength']) {
+              Máximo 50 caracteres
+            }
+          </span>
+        }
+      </div>
+
+      <div class="form-group">
+        <label for="email" class="form-label">Email *</label>
+        <input
+          type="email"
+          id="email"
+          formControlName="email"
+          class="form-control"
+          [class.error]="email?.invalid && email?.touched"
+          placeholder="correo@ejemplo.com">
+        @if (email?.invalid && email?.touched) {
+          <span class="form-error">
+            @if (email?.errors?.['required']) {
+              El email es requerido
+            }
+            @if (email?.errors?.['email']) {
+              Ingrese un email válido
+            }
+          </span>
+        }
+      </div>
+
+      <div class="form-group">
+        <label for="fullName" class="form-label">Nombre Completo</label>
+        <input
+          type="text"
+          id="fullName"
+          formControlName="fullName"
+          class="form-control"
+          placeholder="Nombre completo (opcional)">
+      </div>
+
+      <div class="form-group">
+        <label for="password" class="form-label">Contraseña *</label>
+        <input
+          type="password"
+          id="password"
+          formControlName="password"
+          class="form-control"
+          [class.error]="password?.invalid && password?.touched"
+          placeholder="Mínimo 6 caracteres">
+        @if (password?.invalid && password?.touched) {
+          <span class="form-error">
+            @if (password?.errors?.['required']) {
+              La contraseña es requerida
+            }
+            @if (password?.errors?.['minlength']) {
+              Mínimo 6 caracteres
+            }
+          </span>
+        }
+      </div>
+
+      <div class="form-group">
+        <label for="confirmPassword" class="form-label">Confirmar Contraseña *</label>
+        <input
+          type="password"
+          id="confirmPassword"
+          formControlName="confirmPassword"
+          class="form-control"
+          [class.error]="confirmPassword?.invalid && confirmPassword?.touched"
+          placeholder="Repita su contraseña">
+        @if (confirmPassword?.invalid && confirmPassword?.touched) {
+          <span class="form-error">
+            @if (confirmPassword?.errors?.['required']) {
+              Debe confirmar su contraseña
+            }
+            @if (confirmPassword?.errors?.['passwordMismatch']) {
+              Las contraseñas no coinciden
+            }
+          </span>
+        }
+      </div>
+
+      <button
+        type="submit"
+        class="btn btn-primary w-100"
+        [disabled]="loading()">
+        @if (loading()) {
+          <span class="spinner"></span>
+          Registrando...
+        } @else {
+          Crear Cuenta
+        }
+      </button>
+    </form>
+
+    <div class="auth-footer">
+      <p class="text-secondary">
+        ¿Ya tienes una cuenta?
+        <a routerLink="/auth/login" class="text-primary fw-semibold">Inicia sesión aquí</a>
+      </p>
+    </div>
+  </div>
+</div>

@@ -163,7 +163,16 @@ SELECT
     indexname,
     indexdef
 FROM pg_indexes
-WHERE tablename = 'tasks';
+WHERE tablename = 'tasks'
+ORDER BY indexname;
+
+-- Ver todos los índices de la tabla users
+SELECT
+    indexname,
+    indexdef
+FROM pg_indexes
+WHERE tablename = 'users'
+ORDER BY indexname;
 
 -- Ver uso de índices
 SELECT
@@ -189,29 +198,85 @@ WHERE idx_scan = 0
   AND indexname NOT LIKE 'pg_toast%'
 ORDER BY pg_relation_size(indexrelid) DESC;
 
--- Crear índices útiles para Task Management API
--- (Ejecutar solo si no existen)
+-- ============================================================================
+-- INFORMACIÓN SOBRE ÍNDICES ACTUALES
+-- ============================================================================
+--
+-- ÍNDICES CREADOS AUTOMÁTICAMENTE POR HIBERNATE (desde anotaciones JPA):
+-- -----------------------------------------------------------------------
+-- Tabla: tasks
+--   1. idx_task_status (status)
+--   2. idx_task_user_id (user_id)
+--   3. idx_task_due_date (due_date)
+--   4. idx_task_created_at (created_at DESC)
+--   5. idx_task_status_created (status, created_at DESC)
+--
+-- Tabla: users
+--   1. UK_username (username) - Índice único automático
+--   2. UK_email (email) - Índice único automático
+--
+-- ÍNDICES CREADOS POR SCHEMA.SQL (índices avanzados):
+-- ----------------------------------------------------
+-- Tabla: tasks
+--   1. idx_task_title_fulltext (GIN para búsqueda de texto)
+--   2. idx_task_due_date_partial (Índice parcial con WHERE)
+--
+-- Tabla: users
+--   1. idx_user_enabled (Índice parcial para usuarios activos)
+--
+-- Tabla: user_roles
+--   1. idx_user_roles_composite (user_id, role_id)
+--
+-- ============================================================================
+-- COMANDOS PARA CREAR/RECREAR ÍNDICES MANUALMENTE (si es necesario)
+-- ============================================================================
+--
+-- IMPORTANTE: Estos índices normalmente se crean automáticamente.
+-- Solo ejecutar manualmente si:
+-- 1. Necesitas recrear un índice corrupto
+-- 2. Estás migrando desde una BD sin índices
+-- 3. Quieres crear índices en una BD de producción existente
+--
+-- ============================================================================
 
--- Índice para búsqueda por estado
-CREATE INDEX IF NOT EXISTS idx_tasks_status
-    ON tasks(status);
+-- ÍNDICES BÁSICOS (normalmente creados por Hibernate)
+-- ----------------------------------------------------
 
--- Índice para búsqueda por título (text search)
-CREATE INDEX IF NOT EXISTS idx_tasks_title_search
-    ON tasks USING gin(to_tsvector('spanish', title));
+-- Tabla TASKS - Índice para búsqueda por estado
+-- CREATE INDEX IF NOT EXISTS idx_task_status ON tasks(status);
 
--- Índice para ordenamiento por fecha de creación
-CREATE INDEX IF NOT EXISTS idx_tasks_created_at
-    ON tasks(created_at DESC);
+-- Tabla TASKS - Índice crítico para ownership verification
+-- CREATE INDEX IF NOT EXISTS idx_task_user_id ON tasks(user_id);
 
--- Índice compuesto para filtrado por estado y fecha
-CREATE INDEX IF NOT EXISTS idx_tasks_status_created
-    ON tasks(status, created_at DESC);
+-- Tabla TASKS - Índice para búsqueda por fecha límite
+-- CREATE INDEX IF NOT EXISTS idx_task_due_date ON tasks(due_date);
 
--- Índice para búsqueda por fecha límite
-CREATE INDEX IF NOT EXISTS idx_tasks_due_date
-    ON tasks(due_date)
-    WHERE due_date IS NOT NULL;
+-- Tabla TASKS - Índice para ordenamiento por fecha de creación
+-- CREATE INDEX IF NOT EXISTS idx_task_created_at ON tasks(created_at DESC);
+
+-- Tabla TASKS - Índice compuesto para filtrado por estado y fecha
+-- CREATE INDEX IF NOT EXISTS idx_task_status_created ON tasks(status, created_at DESC);
+
+-- ÍNDICES AVANZADOS (normalmente creados por schema.sql)
+-- -------------------------------------------------------
+
+-- Tabla TASKS - Índice GIN para búsqueda de texto completo en título
+-- CREATE INDEX IF NOT EXISTS idx_task_title_fulltext
+--     ON tasks USING gin(to_tsvector('spanish', title));
+
+-- Tabla TASKS - Índice parcial para tareas con fecha límite
+-- CREATE INDEX IF NOT EXISTS idx_task_due_date_partial
+--     ON tasks(due_date)
+--     WHERE due_date IS NOT NULL;
+
+-- Tabla USERS - Índice parcial para usuarios activos
+-- CREATE INDEX IF NOT EXISTS idx_user_enabled
+--     ON users(enabled)
+--     WHERE enabled = true;
+
+-- Tabla USER_ROLES - Índice compuesto para relación muchos-a-muchos
+-- CREATE INDEX IF NOT EXISTS idx_user_roles_composite
+--     ON user_roles(user_id, role_id);
 
 -- ============================================================================
 -- OPTIMIZACIÓN Y MANTENIMIENTO

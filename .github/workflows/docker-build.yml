@@ -1,0 +1,148 @@
+name: Docker Build and Push
+
+# ============================================================================
+# TRIGGERS - Cuándo se ejecuta este workflow
+# ============================================================================
+on:
+  # Se ejecuta cuando CI pasa exitosamente
+  workflow_run:
+    workflows: ["CI - Build and Test"]
+    branches: [main, develop]
+    types:
+      - completed
+
+  # Se ejecuta en releases
+  release:
+    types: [published]
+
+  # Permite ejecución manual desde GitHub UI
+  workflow_dispatch:
+    inputs:
+      tags:
+        description: 'Tags adicionales para la imagen (separados por coma)'
+        required: false
+        default: ''
+
+# ============================================================================
+# PERMISOS
+# ============================================================================
+permissions:
+  contents: read
+  packages: write
+
+# ============================================================================
+# VARIABLES DE ENTORNO GLOBALES
+# ============================================================================
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+# ============================================================================
+# JOBS
+# ============================================================================
+jobs:
+  # ==========================================================================
+  # JOB 1: BUILD Y PUSH DOCKER IMAGE
+  # ==========================================================================
+  build-and-push:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    # Solo ejecutar si el workflow anterior fue exitoso (o si es manual)
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' || github.event_name == 'release' }}
+
+    steps:
+      # ======================================================================
+      # CHECKOUT - Obtener código del repositorio
+      # ======================================================================
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ======================================================================
+      # DOCKER - Setup BuildX (para multi-platform builds)
+      # ======================================================================
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ======================================================================
+      # REGISTRY - Login a GitHub Container Registry
+      # ======================================================================
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ======================================================================
+      # METADATA - Extraer metadata (tags, labels) para Docker
+      # ======================================================================
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            # Tag con SHA del commit
+            type=sha,prefix={{branch}}-
+            # Tag con nombre de rama
+            type=ref,event=branch
+            # Tag con version de release
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            # Tag latest para main
+            type=raw,value=latest,enable={{is_default_branch}}
+            # Tags personalizados (si se proporcionan)
+            type=raw,value=${{ github.event.inputs.tags }},enable=${{ github.event.inputs.tags != '' }}
+
+      # ======================================================================
+      # BUILD - Construir y push imagen Docker
+      # ======================================================================
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            VCS_REF=${{ github.sha }}
+            VERSION=${{ steps.meta.outputs.version }}
+
+      # ======================================================================
+      # SECURITY - Scan imagen con Trivy
+      # ======================================================================
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      # ======================================================================
+      # OUTPUT - Mostrar información de la imagen
+      # ======================================================================
+      - name: Image digest
+        run: |
+          echo "### Docker Image Build Summary :whale:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Registry:** ${{ env.REGISTRY }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** ${{ env.IMAGE_NAME }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Tags:**" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Pull command:**" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY

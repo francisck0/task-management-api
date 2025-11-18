@@ -1,0 +1,47 @@
+<nav class="navbar">
+  <div class="navbar-container">
+    <div class="navbar-brand">
+      <a routerLink="/" class="brand-link">
+        <h2>📋 Task Manager</h2>
+      </a>
+    </div>
+
+    @if (isAuthenticated()) {
+      <div class="navbar-menu">
+        <a routerLink="/dashboard" routerLinkActive="active" class="nav-link">
+          Dashboard
+        </a>
+        <a routerLink="/tasks" routerLinkActive="active" class="nav-link">
+          Tareas
+        </a>
+        <a routerLink="/trash" routerLinkActive="active" class="nav-link">
+          Papelera
+        </a>
+        @if (isAdmin()) {
+          <a routerLink="/admin" routerLinkActive="active" class="nav-link">
+            Admin
+          </a>
+        }
+      </div>
+
+      <div class="navbar-user">
+        <div class="user-info">
+          <span class="user-name">{{ currentUser()?.username }}</span>
+          <span class="user-email text-secondary">{{ currentUser()?.email }}</span>
+        </div>
+        <button (click)="logout()" class="btn btn-sm btn-outline">
+          Salir
+        </button>
+      </div>
+    } @else {
+      <div class="navbar-actions">
+        <a routerLink="/auth/login" class="btn btn-sm btn-outline">
+          Iniciar Sesión
+        </a>
+        <a routerLink="/auth/register" class="btn btn-sm btn-primary">
+          Registrarse
+        </a>
+      </div>
+    }
+  </div>
+</nav>

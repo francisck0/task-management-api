@@ -1,145 +1,159 @@
 # ============================================================================
-# MULTI-STAGE DOCKERFILE PARA TASK MANAGEMENT API
+# MULTI-STAGE DOCKERFILE OPTIMIZADO CON SPRING BOOT LAYERED JARS
 # ============================================================================
 #
-# ¿QUÉ ES MULTI-STAGE BUILD?
-# - Permite usar múltiples imágenes base (FROM) en un solo Dockerfile
-# - Cada stage puede copiar artefactos de stages anteriores
-# - La imagen final solo contiene lo necesario para ejecutar (no herramientas de build)
+# ¿QUÉ ES MULTI-STAGE BUILD CON LAYERS?
+# - Usa múltiples stages (FROM) en un solo Dockerfile
+# - Separa el JAR en capas lógicas (dependencies, loader, application)
+# - Docker cachea cada capa por separado
+# - Solo reconstruye las capas que cambiaron
 #
-# VENTAJAS:
-# ✅ Imágenes más pequeñas (solo runtime, sin SDK ni dependencias de build)
+# VENTAJAS PRINCIPALES:
+# ✅ Imágenes más pequeñas (solo runtime, sin SDK)
+# ✅ Builds 10-100x más rápidos en cambios incrementales
+# ✅ Mejor caché de Docker (dependencias separadas del código)
+# ✅ Menor transferencia de datos a registry
 # ✅ Más seguras (menos superficie de ataque)
-# ✅ Builds más rápidos con caché de Docker
-# ✅ Separación clara entre build y runtime
 #
-# ESTE DOCKERFILE TIENE 2 STAGES:
-# 1. builder: Compila la aplicación con Gradle y JDK
-# 2. runtime: Ejecuta la aplicación con JRE optimizado
+# CAPAS DE SPRING BOOT:
+# 1. dependencies: Dependencias externas (~145MB, raramente cambia)
+# 2. spring-boot-loader: Spring Boot loader (~1MB, casi nunca cambia)
+# 3. snapshot-dependencies: Dependencias SNAPSHOT (~variable)
+# 4. application: Tu código fuente (~5MB, cambia frecuentemente)
+#
+# MEJORA DE PERFORMANCE:
+# Antes (sin layers):
+#   - Cambio en código → Rebuild completo de JAR (150MB)
+#   - Docker push/pull: 150MB cada vez
+#
+# Ahora (con layers):
+#   - Cambio en código → Solo rebuild capa 'application' (5MB)
+#   - Docker push/pull: Solo 5MB
+#   - Resto de capas (145MB) permanecen cacheadas
 #
 # ============================================================================
 
 # ============================================================================
 # STAGE 1: BUILD
 # ============================================================================
-# Usa imagen con JDK 21 y Alpine Linux (muy ligera)
-# Alpine es una distribución Linux minimalista (~5MB vs ~100MB de Ubuntu)
+# Compila la aplicación y extrae las capas del JAR
 FROM gradle:8.5-jdk21-alpine AS builder
 
-# Metadata de la imagen (buena práctica)
-# Se puede consultar con: docker inspect <image>
+# Metadata
+LABEL stage=builder
 LABEL maintainer="Task Management API Team"
-LABEL description="Build stage for Task Management API with Spring Boot"
-LABEL version="1.0"
+LABEL description="Build stage with Gradle and layered JAR extraction"
 
-# Establecer directorio de trabajo dentro del contenedor
 WORKDIR /app
 
 # ============================================================================
-# OPTIMIZACIÓN: CACHEAR DEPENDENCIAS
+# OPTIMIZACIÓN: CACHEAR DEPENDENCIAS DE GRADLE
 # ============================================================================
-# Copiar solo archivos de configuración de Gradle primero
-# Docker cachea cada capa (COPY, RUN, etc) por separado
-# Si estos archivos no cambian, Docker usa caché y no descarga dependencias de nuevo
-# Esto hace builds subsecuentes MUCHO más rápidos
-
-# Copiar archivos de configuración de Gradle
+# Copiar solo archivos de configuración primero
+# Si estos archivos no cambian, Gradle usa su caché
 COPY build.gradle settings.gradle ./
 COPY gradle ./gradle
 
 # Descargar dependencias (se cachea si build.gradle no cambia)
-# --no-daemon: No usar Gradle daemon (no necesario en contenedor)
-# --no-watch-fs: No monitorear sistema de archivos (no necesario en build)
 RUN gradle dependencies --no-daemon --no-watch-fs || true
 
 # ============================================================================
-# COPIAR CÓDIGO FUENTE Y COMPILAR
+# COMPILAR APLICACIÓN
 # ============================================================================
-# Ahora sí, copiar el código fuente
-# Esta capa se invalida cada vez que el código cambia
-# Pero la capa de dependencias sigue cacheada
+# Copiar código fuente
 COPY src ./src
 
-# Compilar la aplicación
-# clean: Limpia builds anteriores
-# bootJar: Crea un JAR ejecutable con todas las dependencias (fat JAR)
-# -x test: Omite tests (ya se ejecutaron en CI/CD)
-# --no-daemon: No usar daemon de Gradle
-# --no-watch-fs: No monitorear filesystem
-# -Pprofile=prod: Activa perfil de producción
+# Compilar y generar JAR con capas habilitadas
+# La configuración de layered JAR está en build.gradle
 RUN gradle clean bootJar -x test --no-daemon --no-watch-fs
 
-# El JAR se genera en: build/libs/api-0.0.1-SNAPSHOT.jar
-# Podemos verificar su ubicación con: ls -la build/libs/
+# ============================================================================
+# EXTRAER CAPAS DEL JAR
+# ============================================================================
+# Spring Boot incluye una herramienta (jarmode=layertools) para extraer capas
+# Esto separa el JAR en directorios: dependencies/, spring-boot-loader/,
+# snapshot-dependencies/, application/
+RUN java -Djarmode=layertools -jar build/libs/*.jar extract --destination extracted
+
+# Verificar capas extraídas (útil para debugging)
+RUN ls -la extracted/
 
 # ============================================================================
 # STAGE 2: RUNTIME
 # ============================================================================
-# Usa imagen con solo JRE (Java Runtime Environment)
-# No incluye compilador ni herramientas de desarrollo
-# JRE es ~50% más pequeño que JDK
-
-# Eclipse Temurin es la distribución OpenJDK recomendada (anteriormente AdoptOpenJDK)
-# Alpine hace la imagen más ligera (~150MB vs ~350MB con base Ubuntu)
+# Imagen mínima con solo JRE para ejecutar la aplicación
 FROM eclipse-temurin:21-jre-alpine AS runtime
 
 # Metadata
 LABEL maintainer="Task Management API Team"
-LABEL description="Runtime stage for Task Management API with Spring Boot"
-LABEL version="1.0"
+LABEL description="Optimized runtime with Spring Boot layered JARs"
+LABEL version="2.0"
 
 # ============================================================================
-# BUENAS PRÁCTICAS DE SEGURIDAD
+# SEGURIDAD: USUARIO NO PRIVILEGIADO
 # ============================================================================
-
-# 1. NO EJECUTAR COMO ROOT
-# Por defecto, los contenedores ejecutan procesos como root (UID 0)
-# Si el contenedor es comprometido, el atacante tiene acceso root
-# SOLUCIÓN: Crear usuario no privilegiado
-
-# Crear grupo y usuario 'springboot' sin privilegios
-# -S: Usuario de sistema (sin shell login)
-# -G: Grupo primario
-# -h: Home directory
+# Crear usuario sin privilegios para ejecutar la aplicación
 RUN addgroup -S springboot && adduser -S springboot -G springboot
 
-# 2. INSTALAR HERRAMIENTAS DE MONITOREO (opcional pero recomendado)
-# curl: Para health checks desde fuera del contenedor
-# tzdata: Para manejar zonas horarias correctamente
+# Instalar herramientas esenciales
+# curl: Health checks
+# tzdata: Zonas horarias
 RUN apk add --no-cache curl tzdata
 
-# 3. CONFIGURAR ZONA HORARIA
-# Establecer zona horaria del contenedor
+# Configurar zona horaria
 ENV TZ=America/Mexico_City
 RUN cp /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 # ============================================================================
-# CONFIGURACIÓN DE LA APLICACIÓN
+# COPIAR CAPAS EN ORDEN DE ESTABILIDAD
 # ============================================================================
+# IMPORTANTE: Las capas más estables van primero
+# Docker cachea cada instrucción COPY como una capa separada
+# Si una capa no cambia, Docker la reutiliza del caché
+#
+# ORDEN ESTRATÉGICO:
+# 1. dependencies: Casi nunca cambia → Mejor caché
+# 2. spring-boot-loader: Casi nunca cambia
+# 3. snapshot-dependencies: Puede cambiar (dependencias en desarrollo)
+# 4. application: Cambia con cada commit → Peor caché
+#
+# Este orden maximiza la reutilización del caché de Docker
 
-# Directorio de trabajo
 WORKDIR /app
 
-# Copiar el JAR desde el stage de build
-# --from=builder: Copia desde el stage llamado 'builder'
-# --chown: Establece el propietario del archivo
-COPY --from=builder --chown=springboot:springboot /app/build/libs/*.jar app.jar
+# Capa 1: Dependencias externas (más estable)
+# Contiene: JAR files de Maven/Gradle dependencies
+# Tamaño típico: ~145MB
+# Frecuencia de cambio: Baja (solo cuando actualizas dependencias en build.gradle)
+COPY --from=builder --chown=springboot:springboot /app/extracted/dependencies/ ./
 
-# Cambiar al usuario no privilegiado
-# Todos los comandos siguientes se ejecutan como 'springboot'
+# Capa 2: Spring Boot Loader (muy estable)
+# Contiene: Clases del loader de Spring Boot
+# Tamaño típico: ~1MB
+# Frecuencia de cambio: Muy baja (solo cuando actualizas Spring Boot version)
+COPY --from=builder --chown=springboot:springboot /app/extracted/spring-boot-loader/ ./
+
+# Capa 3: Dependencias SNAPSHOT (opcional, menos estable que dependencies)
+# Contiene: Dependencias con versión SNAPSHOT (en desarrollo)
+# Tamaño típico: Variable
+# Frecuencia de cambio: Media
+COPY --from=builder --chown=springboot:springboot /app/extracted/snapshot-dependencies/ ./
+
+# Capa 4: Código de la aplicación (menos estable)
+# Contiene: Tus clases compiladas (.class files)
+# Tamaño típico: ~5MB
+# Frecuencia de cambio: Alta (cada commit con cambios de código)
+COPY --from=builder --chown=springboot:springboot /app/extracted/application/ ./
+
+# Cambiar a usuario no privilegiado
 USER springboot
 
 # ============================================================================
 # VARIABLES DE ENTORNO
 # ============================================================================
-# Estas variables se pueden sobrescribir en docker-compose.yml o al ejecutar
-# docker run -e VARIABLE=valor
-
-# Perfil de Spring Boot (dev, test, prod)
 ENV SPRING_PROFILES_ACTIVE=prod
 
-# Configuración de JVM
-# JAVA_OPTS permite pasar opciones personalizadas a la JVM
+# Configuración optimizada de JVM para contenedores
 ENV JAVA_OPTS="-XX:+UseContainerSupport \
                -XX:MaxRAMPercentage=75.0 \
                -XX:InitialRAMPercentage=50.0 \
@@ -147,112 +161,100 @@ ENV JAVA_OPTS="-XX:+UseContainerSupport \
                -XX:+UseStringDeduplication \
                -Djava.security.egd=file:/dev/./urandom"
 
-# Explicación de JAVA_OPTS:
-# -XX:+UseContainerSupport: JVM detecta límites de memoria del contenedor
-# -XX:MaxRAMPercentage=75.0: Usa máximo 75% de RAM del contenedor
-# -XX:InitialRAMPercentage=50.0: Inicia con 50% de RAM del contenedor
-# -XX:+UseG1GC: Usa Garbage Collector G1 (recomendado para apps grandes)
-# -XX:+UseStringDeduplication: Reduce uso de memoria eliminando Strings duplicados
-# -Djava.security.egd=file:/dev/./urandom: Mejora rendimiento de generación de random
-
-# Puerto en el que la aplicación escucha
-# Spring Boot usa 8080 por defecto
 ENV SERVER_PORT=8080
 
 # ============================================================================
 # HEALTH CHECK
 # ============================================================================
-# Docker puede verificar automáticamente si la aplicación está saludable
-# Si falla, puede reiniciar el contenedor automáticamente
-
 HEALTHCHECK --interval=30s --timeout=3s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:${SERVER_PORT}/api/v1/actuator/health || exit 1
-
-# Explicación:
-# --interval=30s: Verifica cada 30 segundos
-# --timeout=3s: Timeout de 3 segundos para cada check
-# --start-period=60s: Espera 60s antes de empezar (para que la app inicie)
-# --retries=3: 3 fallos consecutivos = unhealthy
-# CMD: Comando que ejecuta (exit 0 = healthy, exit 1 = unhealthy)
 
 # ============================================================================
 # EXPONER PUERTO
 # ============================================================================
-# Documenta qué puerto usa la aplicación
-# NOTA: Esto NO publica el puerto, solo es documentación
-# Para publicar: docker run -p 8080:8080 o en docker-compose.yml
-
 EXPOSE ${SERVER_PORT}
 
 # ============================================================================
 # COMANDO DE INICIO
 # ============================================================================
-# ENTRYPOINT vs CMD:
-# - ENTRYPOINT: Define el ejecutable principal (no se puede sobrescribir fácilmente)
-# - CMD: Argumentos por defecto (se pueden sobrescribir al ejecutar)
-# - Juntos: ENTRYPOINT ejecuta, CMD proporciona args por defecto
-
-# Usar exec form (array JSON) en lugar de shell form
-# Ventajas:
-# - Señales (SIGTERM, SIGINT) se pasan correctamente a la aplicación
-# - No crea proceso shell innecesario
-# - Mejor para graceful shutdown
-
-ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
+# Ejecutar usando el Spring Boot Launcher (JarLauncher)
+# Este launcher es parte de spring-boot-loader que copiamos antes
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS org.springframework.boot.loader.launch.JarLauncher"]
 
 # ============================================================================
-# CÓMO CONSTRUIR Y EJECUTAR ESTA IMAGEN
+# CÓMO USAR ESTE DOCKERFILE
 # ============================================================================
 #
-# Construir imagen:
-#   docker build -t task-management-api:latest .
+# 1. Construir imagen:
+#    docker build -t task-management-api:latest .
 #
-# Construir sin caché (forzar rebuild completo):
-#   docker build --no-cache -t task-management-api:latest .
+# 2. Primera construcción:
+#    - Descarga todas las dependencias
+#    - Compila la aplicación
+#    - Extrae las capas
+#    - Tiempo: ~2-5 minutos
 #
-# Ejecutar contenedor (standalone):
-#   docker run -d \
-#     --name task-api \
-#     -p 8080:8080 \
-#     -e SPRING_PROFILES_ACTIVE=prod \
-#     -e SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/taskmanagement_db \
-#     -e SPRING_DATASOURCE_USERNAME=postgres \
-#     -e SPRING_DATASOURCE_PASSWORD=postgres \
-#     task-management-api:latest
+# 3. Reconstrucción después de cambiar CÓDIGO:
+#    - Reutiliza capas: dependencies, spring-boot-loader, snapshot-dependencies
+#    - Solo reconstruye capa: application
+#    - Tiempo: ~30 segundos (10x más rápido)
 #
-# Ver logs:
-#   docker logs -f task-api
+# 4. Reconstrucción después de cambiar DEPENDENCIAS (build.gradle):
+#    - Reutiliza capas: spring-boot-loader
+#    - Reconstruye: dependencies, snapshot-dependencies, application
+#    - Tiempo: ~1-2 minutos
 #
-# Ejecutar comando dentro del contenedor:
-#   docker exec -it task-api sh
+# 5. Ejecutar contenedor:
+#    docker run -d \
+#      --name task-api \
+#      -p 8080:8080 \
+#      -e SPRING_PROFILES_ACTIVE=prod \
+#      -e SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/taskmanagement_db \
+#      task-management-api:latest
 #
-# Detener contenedor:
-#   docker stop task-api
+# 6. Ver logs:
+#    docker logs -f task-api
 #
-# Eliminar contenedor:
-#   docker rm task-api
+# 7. Ver tamaño de imagen:
+#    docker images task-management-api
+#
+# 8. Ver capas de la imagen:
+#    docker history task-management-api:latest
 #
 # ============================================================================
-# OPTIMIZACIONES ADICIONALES (AVANZADO)
+# COMPARACIÓN DE TAMAÑOS
 # ============================================================================
 #
-# 1. USAR SPRING BOOT LAYERED JARS (para mejor caché de Docker):
-#    - Spring Boot puede separar el JAR en capas (dependencias, clases, recursos)
-#    - Cambios en código no invalidan caché de dependencias
-#    - Ver: https://docs.spring.io/spring-boot/docs/current/reference/html/container-images.html#container-images.dockerfiles
+# Sin optimizaciones:
+#   - Imagen completa: ~500MB (incluye JDK, Gradle, build tools)
+#   - Push a registry: ~500MB cada vez
 #
-# 2. USAR CLOUD NATIVE BUILDPACKS:
-#    - ./gradlew bootBuildImage
-#    - Crea imágenes optimizadas sin escribir Dockerfile
+# Con multi-stage (sin layers):
+#   - Imagen completa: ~200MB (solo JRE + JAR)
+#   - Push a registry: ~200MB cada vez
 #
-# 3. USAR JLINK PARA CREAR JRE PERSONALIZADO:
-#    - Incluye solo módulos de Java necesarios
-#    - Reduce imagen a ~50-100MB
+# Con multi-stage + layers (este Dockerfile):
+#   - Imagen completa: ~200MB (solo JRE + capas)
+#   - Push a registry (cambio de código): ~5MB (solo capa application)
+#   - Mejora: 40x menos transferencia de datos
 #
-# 4. COMPILACIÓN NATIVA CON GRAALVM:
-#    - Compila a binario nativo (no necesita JVM)
-#    - Startup instantáneo (<100ms)
-#    - Memoria muy reducida (~30MB)
+# ============================================================================
+# OPTIMIZACIONES FUTURAS
+# ============================================================================
+#
+# 1. JLINK (Custom JRE):
+#    - Crear JRE personalizado con solo módulos necesarios
+#    - Reduce imagen a ~80-100MB
+#
+# 2. GRAALVM NATIVE IMAGE:
+#    - Compilación nativa (sin JVM)
+#    - Imagen final: ~30-50MB
+#    - Startup: <100ms (vs ~3-5s con JVM)
 #    - Requiere configuración adicional
+#
+# 3. DISTROLESS IMAGES:
+#    - Usar imágenes base sin shell ni herramientas
+#    - Más seguras (menor superficie de ataque)
+#    - Más pequeñas
 #
 # ============================================================================

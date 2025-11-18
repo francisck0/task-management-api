@@ -9,6 +9,7 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
@@ -25,9 +26,37 @@ import java.util.stream.Collectors;
  * - UserDetails (integración con Spring Security)
  *
  * AUDITORÍA: Hereda de Auditable para tener campos de creación/actualización automáticos
+ *
+ * SOFT DELETE: Esta entidad implementa eliminación lógica (soft delete).
+ * - Cuando se "elimina" un usuario, solo se marca con deletedAt (timestamp)
+ * - Los usuarios eliminados NO aparecen en queries normales
+ * - Se pueden restaurar cambiando deletedAt a null
+ * - Las tareas del usuario NO se eliminan automáticamente
+ * - IMPORTANTE: Usuario eliminado = cuenta desactivada, no puede hacer login
+ *
+ * ÍNDICES DE BASE DE DATOS:
+ * Esta tabla define 2 índices para optimizar las consultas de autenticación:
+ *
+ * 1. idx_user_username (username):
+ *    - Índice único automático por @Column(unique=true)
+ *    - Usado en: Login (findByUsername), verificación de duplicados
+ *    - Impacto: CRÍTICO - Cada login requiere este índice
+ *
+ * 2. idx_user_email (email):
+ *    - Índice único automático por @Column(unique=true)
+ *    - Usado en: Búsqueda por email (findByEmail), verificación de duplicados
+ *    - Impacto: Mejora significativa en búsquedas y validaciones
+ *
+ * ÍNDICES ADICIONALES (definidos en schema.sql):
+ * - idx_user_enabled: Índice parcial para usuarios activos
+ *
+ * NOTA: Las columnas con unique=true generan automáticamente índices únicos,
+ * por lo que no es necesario definirlos explícitamente en @Index.
  */
 @Entity
 @Table(name = "users")
+@org.hibernate.annotations.Where(clause = "deleted_at IS NULL")
+@org.hibernate.annotations.SQLDelete(sql = "UPDATE users SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -87,6 +116,68 @@ public class User extends Auditable implements UserDetails {
         inverseJoinColumns = @JoinColumn(name = "role_id", referencedColumnName = "id")
     )
     private Set<Role> roles = new HashSet<>();
+
+    /**
+     * Tareas creadas por este usuario
+     *
+     * @OneToMany: Relación uno-a-muchos (un usuario tiene muchas tareas)
+     * mappedBy = "user": Indica que el lado dueño de la relación está en Task.user
+     * cascade = CascadeType.ALL: Al eliminar un usuario, elimina sus tareas
+     * orphanRemoval = true: Si se elimina una tarea de la lista, se elimina de la BD
+     * FetchType.LAZY: No carga las tareas automáticamente (optimización)
+     *
+     * NOTA: Esta es una relación bidireccional, pero normalmente accedemos
+     * a las tareas mediante queries en TaskRepository, no a través de user.getTasks().
+     * La mantenemos para tener el modelo completo y permitir operaciones en cascada.
+     */
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    private Set<Task> tasks = new HashSet<>();
+
+    /**
+     * Fecha de eliminación lógica (soft delete)
+     *
+     * SOFT DELETE IMPLEMENTATION:
+     * - null: Usuario activo
+     * - timestamp: Usuario eliminado lógicamente
+     *
+     * IMPORTANTE:
+     * - Usuario eliminado NO puede hacer login
+     * - Las tareas del usuario NO se eliminan (mantienen referencia)
+     * - Se puede restaurar la cuenta
+     *
+     * @Column(name = "deleted_at"): Nombre de columna en BD
+     */
+    @Column(name = "deleted_at")
+    private LocalDateTime deletedAt;
+
+    // =========================================================================
+    // MÉTODOS HELPER PARA SOFT DELETE
+    // =========================================================================
+
+    /**
+     * Verifica si el usuario está eliminado (soft deleted)
+     *
+     * @return true si el usuario fue eliminado lógicamente
+     */
+    public boolean isDeleted() {
+        return deletedAt != null;
+    }
+
+    /**
+     * Marca el usuario como eliminado (soft delete)
+     * Establece deletedAt al momento actual
+     */
+    public void markAsDeleted() {
+        this.deletedAt = LocalDateTime.now();
+    }
+
+    /**
+     * Restaura el usuario eliminado (undelete)
+     * Establece deletedAt a null
+     */
+    public void restore() {
+        this.deletedAt = null;
+    }
 
     // =========================================================================
     // IMPLEMENTACIÓN DE UserDetails (requerido por Spring Security)

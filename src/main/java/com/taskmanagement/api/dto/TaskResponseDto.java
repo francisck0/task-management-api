@@ -1,5 +1,6 @@
 package com.taskmanagement.api.dto;
 
+import com.taskmanagement.api.model.TaskPriority;
 import com.taskmanagement.api.model.TaskStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
@@ -40,7 +41,9 @@ import java.time.LocalDateTime;
           "status": "PENDING",
           "dueDate": "2025-11-15T18:00:00",
           "createdAt": "2025-11-12T10:30:00",
-          "updatedAt": "2025-11-12T10:30:00"
+          "updatedAt": "2025-11-12T10:30:00",
+          "userId": 1,
+          "username": "admin"
         }
         """
 )
@@ -71,6 +74,13 @@ public class TaskResponseDto {
     private TaskStatus status;
 
     @Schema(
+        description = "Prioridad de la tarea (importancia/urgencia)",
+        example = "MEDIUM",
+        allowableValues = {"LOW", "MEDIUM", "HIGH", "CRITICAL"}
+    )
+    private TaskPriority priority;
+
+    @Schema(
         description = "Fecha y hora límite para completar la tarea",
         example = "2025-11-15T18:00:00",
         type = "string",
@@ -96,4 +106,53 @@ public class TaskResponseDto {
         accessMode = Schema.AccessMode.READ_ONLY
     )
     private LocalDateTime updatedAt;
+
+    /**
+     * ID del usuario propietario de la tarea
+     *
+     * SEGURIDAD: Solo incluimos el ID y username, NO datos sensibles
+     * como email, contraseña, etc.
+     *
+     * UTILIDAD:
+     * - Permite al frontend identificar el propietario
+     * - Útil para mostrar "Creado por: username"
+     * - No expone información privada
+     */
+    @Schema(
+        description = "ID del usuario propietario de la tarea",
+        example = "1",
+        accessMode = Schema.AccessMode.READ_ONLY
+    )
+    private Long userId;
+
+    /**
+     * Nombre de usuario del propietario de la tarea
+     */
+    @Schema(
+        description = "Nombre de usuario del propietario",
+        example = "admin",
+        accessMode = Schema.AccessMode.READ_ONLY
+    )
+    private String username;
+
+    /**
+     * Fecha y hora de eliminación lógica (soft delete)
+     *
+     * - null: Tarea activa (no eliminada)
+     * - timestamp: Tarea eliminada lógicamente en esa fecha/hora
+     *
+     * UTILIDAD:
+     * - Permite al frontend identificar tareas eliminadas
+     * - Útil para mostrar en la papelera
+     * - Permite calcular tiempo desde eliminación
+     */
+    @Schema(
+        description = "Fecha y hora de eliminación de la tarea (null si no está eliminada)",
+        example = "2025-11-18T15:00:00",
+        type = "string",
+        format = "date-time",
+        nullable = true,
+        accessMode = Schema.AccessMode.READ_ONLY
+    )
+    private LocalDateTime deletedAt;
 }

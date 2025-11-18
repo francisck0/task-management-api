@@ -162,8 +162,8 @@ FORMATOS DE LOG:
     <!-- Logger para nuestra aplicación -->
     <logger name="com.taskmanagement.api" level="DEBUG" additivity="false">
         <appender-ref ref="CONSOLE"/>
-        <appender-ref ref="FILE"/>
-        <appender-ref ref="ERROR_FILE"/>
+        <!-- <appender-ref ref="FILE"/> -->
+        <!-- <appender-ref ref="ERROR_FILE"/> -->
     </logger>
 
     <!-- Loggers para frameworks (configurados para reducir ruido) -->
@@ -194,8 +194,8 @@ FORMATOS DE LOG:
 
     <root level="INFO">
         <appender-ref ref="CONSOLE"/>
-        <appender-ref ref="FILE"/>
-        <appender-ref ref="ERROR_FILE"/>
+        <!-- <appender-ref ref="FILE"/> -->
+        <!-- <appender-ref ref="ERROR_FILE"/> -->
     </root>
 
     <!-- ===================================================================
@@ -209,7 +209,7 @@ FORMATOS DE LOG:
         <!-- Sobrescribir logger de nuestra app para TRACE en desarrollo -->
         <logger name="com.taskmanagement.api" level="TRACE" additivity="false">
             <appender-ref ref="CONSOLE"/>
-            <appender-ref ref="FILE"/>
+            <!-- <appender-ref ref="FILE"/> -->
         </logger>
 
         <!-- Mostrar queries SQL con parámetros -->
@@ -219,7 +219,7 @@ FORMATOS DE LOG:
         <!-- Root logger en DEBUG para desarrollo -->
         <root level="DEBUG">
             <appender-ref ref="CONSOLE"/>
-            <appender-ref ref="FILE"/>
+            <!-- <appender-ref ref="FILE"/> -->
         </root>
     </springProfile>
 
@@ -246,8 +246,9 @@ FORMATOS DE LOG:
     <springProfile name="prod">
         <!-- Solo INFO y superior en producción -->
         <logger name="com.taskmanagement.api" level="INFO" additivity="false">
-            <appender-ref ref="FILE"/>
-            <appender-ref ref="ERROR_FILE"/>
+            <appender-ref ref="CONSOLE"/>
+            <!-- <appender-ref ref="FILE"/> -->
+            <!-- <appender-ref ref="ERROR_FILE"/> -->
         </logger>
 
         <!-- NO mostrar queries SQL en producción (performance) -->
@@ -260,8 +261,9 @@ FORMATOS DE LOG:
 
         <!-- Root logger en WARN para producción -->
         <root level="WARN">
-            <appender-ref ref="FILE"/>
-            <appender-ref ref="ERROR_FILE"/>
+            <appender-ref ref="CONSOLE"/>
+            <!-- <appender-ref ref="FILE"/> -->
+            <!-- <appender-ref ref="ERROR_FILE"/> -->
         </root>
     </springProfile>
 

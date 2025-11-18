@@ -36,14 +36,28 @@ import java.util.function.Function;
  * - La clave secreta NUNCA debe estar hardcodeada
  * - Debe estar en variables de entorno o archivos de configuración seguros
  * - Los tokens tienen fecha de expiración para limitar el riesgo
+ * - La aplicación valida el secret al inicio (ver JwtSecretValidator)
+ * - Si se detecta un secret por defecto, la aplicación NO arrancará
+ *
+ * @see com.taskmanagement.api.config.JwtSecretValidator
  */
 @Service
 public class JwtService {
 
     /**
      * Clave secreta para firmar los tokens JWT
-     * DEBE ser lo suficientemente larga y compleja
-     * En producción, usar variables de entorno
+     *
+     * SEGURIDAD:
+     * - DEBE ser lo suficientemente larga y compleja (mínimo 32 caracteres)
+     * - DEBE configurarse mediante variable de entorno JWT_SECRET
+     * - El valor por defecto es SOLO para desarrollo local
+     * - La aplicación valida el secret al inicio y FALLA si es inseguro
+     *
+     * VALIDACIÓN:
+     * JwtSecretValidator verifica al startup que no se esté usando el valor por defecto.
+     * Si se detecta, la aplicación NO arrancará en producción.
+     *
+     * @see com.taskmanagement.api.config.JwtSecretValidator
      */
     @Value("${jwt.secret-key:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}")
     private String secretKey;

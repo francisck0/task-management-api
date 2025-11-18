@@ -38,81 +38,41 @@ spring:
     # HikariCP es el pool de conexiones por defecto en Spring Boot
     # Optimizado para alta performance y baja latencia
     hikari:
-      # PERFORMANCE: Número máximo de conexiones en el pool
-      # Fórmula recomendada: ((core_count * 2) + effective_spindle_count)
-      # Para aplicaciones típicas: 10-20 conexiones es suficiente
-      # Más conexiones NO significa mejor performance
       maximum-pool-size: ${DB_POOL_SIZE:20}
-
-      # PERFORMANCE: Conexiones idle mínimas mantenidas
-      # Valor recomendado: mismo que maximum-pool-size para carga estable
-      # o 50% de maximum-pool-size para carga variable
       minimum-idle: ${DB_POOL_MIN_IDLE:10}
-
-      # PERFORMANCE: Timeout para obtener una conexión del pool (ms)
-      # Si no hay conexiones disponibles en este tiempo, lanza excepción
-      # Default: 30000ms (30s) - Valor más bajo detecta problemas antes
       connection-timeout: 20000
-
-      # PERFORMANCE: Tiempo máximo que una conexión puede estar idle (ms)
-      # Después de este tiempo, la conexión se cierra si hay más de minimum-idle
-      # Default: 600000ms (10min)
-      idle-timeout: 300000
-
-      # SEGURIDAD: Tiempo máximo de vida de una conexión (ms)
-      # Previene problemas con firewalls que cierran conexiones largas
-      # Debe ser menor que el timeout de la BD (PostgreSQL default: 2h)
-      # Recomendado: 30min a 1h
-      max-lifetime: 1800000
-
-      # PERFORMANCE: Tiempo que espera al cerrar el pool (ms)
-      # Da tiempo a que las conexiones activas terminen
-      connection-init-sql: SELECT 1
-
-      # SEGURIDAD: Query ejecutada cada vez que se obtiene una conexión
-      # Valida que la conexión sigue activa antes de usarla
-      connection-test-query: SELECT 1
-
-      # PERFORMANCE: Habilitar auto-commit
-      # true: Cada operación es una transacción (más seguro pero más lento)
-      # false: Control manual de transacciones (usar @Transactional)
-      auto-commit: true
-
-      # PERFORMANCE: Tamaño del statement cache preparado
-      # PostgreSQL JDBC soporta prepared statements para mejor performance
-      # 0 = deshabilitado, 250-500 = valor típico
-      # Solo útil si reutilizas muchas queries similares
-      # data-source-properties:
-      #   cachePrepStmts: true
-      #   prepStmtCacheSize: 250
-      #   prepStmtCacheSqlLimit: 2048
-
-      # MONITOREO: Nombre del pool para identificarlo en métricas
-      pool-name: TaskManagementHikariPool
-
-      # SEGURIDAD: Permitir suspension del pool
-      # Útil para mantenimiento sin reiniciar la aplicación
-      allow-pool-suspension: true
-
-      # MONITOREO: Habilitar JMX para monitoreo del pool
-      # Permite ver estadísticas del pool en tiempo real
-      register-mbeans: true
-
-      # PERFORMANCE: Leak detection threshold (ms)
-      # Detecta conexiones que no se cierran apropiadamente
-      # 0 = deshabilitado, 10000+ = habilitado
-      # Útil en desarrollo para detectar connection leaks
-      leak-detection-threshold: 60000
 
   # ==========================================================================
   # CONFIGURACIÓN DE INICIALIZACIÓN DE DATOS
   # ==========================================================================
   sql:
     init:
-      # Ejecutar scripts SQL al inicio (data.sql)
+      # Ejecutar scripts SQL al inicio (schema.sql y data.sql)
+      # IMPORTANTE: Con mode=always, Spring ejecuta los scripts en cada inicio
+      # Orden de ejecución:
+      # 1. Hibernate crea/actualiza tablas (ddl-auto: update)
+      # 2. Spring ejecuta schema.sql (índices avanzados)
+      # 3. Spring ejecuta data.sql (datos iniciales)
       mode: always
-      # Continuar si hay errores (para evitar duplicados)
+
+      # Continuar si hay errores (para evitar duplicados en data.sql)
+      # y para ignorar errores si los índices ya existen en schema.sql
       continue-on-error: true
+
+      # Orden de ejecución de scripts
+      # schema-locations: Se ejecuta primero (DDL - estructura)
+      # data-locations: Se ejecuta segundo (DML - datos)
+      # Por defecto busca: schema.sql y data.sql en resources/
+
+      # Modo de ejecución
+      # embedded: Solo en BD embebidas (H2, HSQLDB)
+      # always: Siempre (desarrollo y producción)
+      # never: Nunca
+
+      # Platform específica (opcional)
+      # Si quieres scripts específicos por BD:
+      # schema-locations: classpath:schema-postgresql.sql
+      # platform: postgresql
 
   # ==========================================================================
   # CONFIGURACIÓN DE JPA / HIBERNATE
@@ -224,6 +184,126 @@ spring:
     #       query:
     #         timeout: 10000  # Timeout de queries en ms
 
+  # ==========================================================================
+  # CONFIGURACIÓN DE REDIS CACHE
+  # ==========================================================================
+  # Redis es un almacén de datos en memoria usado como caché distribuido
+  # VENTAJAS:
+  # - Latencia ultra-baja (microsegundos vs milisegundos de PostgreSQL)
+  # - Reduce carga en la base de datos principal
+  # - Compartir caché entre múltiples instancias de la aplicación
+  # - Escalabilidad horizontal
+  #
+  # CASOS DE USO:
+  # - Caché de tareas consultadas frecuentemente (GET /tasks/{id})
+  # - Caché de listas de tareas por usuario
+  # - Sesiones de usuario (alternativa a sesiones en BD)
+  # - Rate limiting distribuido
+  #
+  data:
+    redis:
+      # Hostname de Redis
+      # DESARROLLO: localhost
+      # PRODUCCIÓN: Variable de entorno REDIS_HOST
+      # Docker: Nombre del servicio (redis)
+      host: ${REDIS_HOST:localhost}
+
+      # Puerto de Redis
+      # Default: 6379
+      port: ${REDIS_PORT:6379}
+
+      # Índice de base de datos Redis (0-15)
+      # Redis soporta múltiples DBs en una instancia
+      # 0 = Default, usar diferentes índices para diferentes propósitos
+      database: ${REDIS_DB:0}
+
+      # Password para autenticación (si está configurado en Redis)
+      # SEGURIDAD: Siempre usar password en producción
+      # password: ${REDIS_PASSWORD:}
+
+      # Timeout de conexión en milisegundos
+      # Tiempo máximo para establecer conexión
+      timeout: 2000ms
+
+      # -----------------------------------------------------------------------
+      # LETTUCE CLIENT CONFIGURATION
+      # -----------------------------------------------------------------------
+      # Lettuce es el cliente Redis por defecto en Spring Boot
+      # Soporta operaciones asíncronas y reactivas
+      lettuce:
+        # Pool de conexiones
+        pool:
+          # PERFORMANCE: Número máximo de conexiones
+          # Valor típico: 8-20 para aplicaciones normales
+          # Redis es muy rápido, no necesita tantas conexiones como PostgreSQL
+          max-active: ${REDIS_POOL_MAX:20}
+
+          # PERFORMANCE: Conexiones idle máximas
+          # Conexiones que permanecen en el pool sin usarse
+          max-idle: ${REDIS_POOL_MAX_IDLE:10}
+
+          # PERFORMANCE: Conexiones idle mínimas
+          # Mantener conexiones listas para uso inmediato
+          min-idle: ${REDIS_POOL_MIN_IDLE:5}
+
+          # PERFORMANCE: Tiempo máximo de espera para obtener una conexión (ms)
+          # Si el pool está lleno, esperar este tiempo antes de fallar
+          # -1 = esperar indefinidamente (no recomendado)
+          max-wait: 2000ms
+
+          # SEGURIDAD: Habilitar test on borrow
+          # Valida que la conexión funciona antes de usarla
+          # time-between-eviction-runs: 60000ms
+
+        # Shutdown timeout
+        # Tiempo de espera al cerrar el pool de conexiones
+        shutdown-timeout: 100ms
+
+  # ==========================================================================
+  # CONFIGURACIÓN DE SPRING CACHE
+  # ==========================================================================
+  # Spring Cache es la abstracción de caché de Spring
+  # Permite usar diferentes implementaciones (Redis, Caffeine, Hazelcast, etc)
+  # con las mismas anotaciones (@Cacheable, @CacheEvict, @CachePut)
+  #
+  cache:
+    # Tipo de caché
+    # redis: Usar Redis como backend de caché
+    # caffeine: Caché local en memoria (alternativa sin Redis)
+    # none: Deshabilitar caché
+    type: redis
+
+    # Configuración específica de Redis Cache
+    redis:
+      # TTL (Time To Live) por defecto para entradas de caché
+      # Después de este tiempo, las entradas expiran automáticamente
+      # RECOMENDACIONES:
+      # - Datos que cambian poco: 1 hora - 24 horas
+      # - Datos que cambian frecuentemente: 5-30 minutos
+      # - Datos críticos: 1-5 minutos
+      #
+      # null = Sin expiración (no recomendado)
+      # Formato: ISO-8601 duration (PT15M = 15 minutos, PT1H = 1 hora)
+      time-to-live: ${CACHE_TTL:PT30M}  # 30 minutos por defecto
+
+      # Permitir valores null en caché
+      # true: Cachear valores null (previene cache penetration attacks)
+      # false: No cachear null (puede causar queries repetidas si el valor no existe)
+      # RECOMENDADO: true para seguridad
+      cache-null-values: true
+
+      # Prefijo para todas las claves en Redis
+      # Ayuda a organizar y evitar colisiones
+      # Ejemplo: task-api:tasks:123
+      key-prefix: "task-api::"
+
+      # Usar el prefijo en las claves
+      use-key-prefix: true
+
+      # SEGURIDAD: Deshabilitar caché de colecciones vacías
+      # Previene DoS mediante queries que retornan vacío
+      # enable-statistics: true  # Habilitar estadísticas de caché (útil para monitoreo)
+
 # ==========================================================================
 # CONFIGURACIÓN DEL SERVIDOR WEB
 # ==========================================================================
@@ -231,10 +311,12 @@ server:
   # Puerto del servidor embebido Tomcat
   port: ${SERVER_PORT:8080}
 
-  # Context path de la aplicación
-  # Todas las rutas serán: http://localhost:8080/api/v1/...
+  # Context path de la aplicación (sin versión)
+  # La versión se maneja a nivel de controlador usando ApiVersion.V1
+  # Ejemplo: http://localhost:8080/api/v1/tasks
+  #          └─────context─────┘└v1┘└tasks┘
   servlet:
-    context-path: /api/v1
+    context-path: /api
 
     # SEGURIDAD: Headers de respuesta HTTP
     # session:
@@ -274,9 +356,11 @@ server:
 # ============================================================================
 logging:
   # Patrón de formato de logs
+  # %X{correlationId} extrae el correlation ID del MDC (Mapped Diagnostic Context)
+  # El correlation ID permite rastrear requests completos a través de todos los logs
   pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
-    # file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%X{correlationId}] - %msg%n"
+    # file: "%d{yyyy-MM-dd HH:mm:ss} [%X{correlationId}] [%thread] %-5level %logger{36} - %msg%n"
 
   # Niveles de log por paquete
   # TRACE < DEBUG < INFO < WARN < ERROR
@@ -425,15 +509,71 @@ cors:
 # ============================================================================
 jwt:
   # Clave secreta para firmar los tokens JWT
-  # IMPORTANTE: En producción, usar variable de entorno
-  # Esta clave NUNCA debe ser compartida ni commiteada en repositorios públicos
-  # Generada con: openssl rand -base64 64
+  # ⚠️ SEGURIDAD CRÍTICA: DEBES configurar esta variable de entorno
+  #
+  # La aplicación NO arrancará sin un JWT secret configurado.
+  # NO uses el valor por defecto en producción.
+  #
+  # CÓMO CONFIGURAR:
+  # 1. Generar secret seguro:
+  #    $ openssl rand -base64 64
+  #    $ ./scripts/generate-secrets.sh
+  #
+  # 2. Configurar variable de entorno JWT_SECRET:
+  #    Linux/Mac:       export JWT_SECRET="tu-secret-aqui"
+  #    Windows:         $env:JWT_SECRET="tu-secret-aqui"
+  #    Docker Compose:  environment: JWT_SECRET=tu-secret-aqui
+  #    Kubernetes:      kubectl create secret generic jwt-secret --from-literal=JWT_SECRET=...
+  #
+  # DESARROLLO LOCAL:
+  # Para desarrollo, se acepta el valor por defecto (la aplicación lo detectará y advertirá).
+  # En PRODUCCIÓN, la aplicación FALLARÁ si usas el valor por defecto.
+  #
+  # Valor por defecto SOLO para desarrollo (NO USAR EN PRODUCCIÓN):
   secret-key: ${JWT_SECRET:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
 
-  # Tiempo de expiración del token en milisegundos
-  # 86400000 ms = 24 horas
-  # En producción, considerar tiempos más cortos (1-2 horas) con refresh tokens
-  expiration: ${JWT_EXPIRATION:86400000}
+  # ============================================================================
+  # ACCESS TOKEN (JWT de corta duración para acceder a recursos)
+  # ============================================================================
+  # Tiempo de expiración del access token en milisegundos
+  # RECOMENDACIONES:
+  # - Desarrollo: 24 horas (86400000ms) para comodidad
+  # - Producción: 15 minutos (900000ms) - 1 hora (3600000ms) por seguridad
+  #
+  # Si un access token es robado, solo es válido por este tiempo.
+  # Tiempos cortos + Refresh Tokens = Mejor seguridad
+  expiration: ${JWT_EXPIRATION:3600000}  # 1 hora (cambiado de 24h)
+
+  # ============================================================================
+  # REFRESH TOKEN (Token de larga duración para renovar access tokens)
+  # ============================================================================
+  refresh-token:
+    # Duración del refresh token en días
+    # RECOMENDACIONES:
+    # - Desarrollo: 7-30 días
+    # - Producción: 7-14 días
+    # - Aplicaciones móviles: 30-90 días
+    #
+    # Después de este tiempo, el usuario debe hacer login de nuevo
+    expiration-days: ${JWT_REFRESH_EXPIRATION_DAYS:7}
+
+    # Habilitar rotación automática de refresh tokens
+    # true: Cada uso genera un nuevo token (más seguro)
+    # false: El mismo token se puede usar múltiples veces
+    #
+    # SEGURIDAD: Rotation detecta tokens comprometidos
+    # Si un atacante roba un token y lo usa, el siguiente uso (del usuario
+    # legítimo o del atacante) generará una alerta y revocará todos los tokens
+    rotation-enabled: ${JWT_REFRESH_ROTATION:true}
+
+    # Límite de dispositivos/sesiones simultáneas por usuario
+    # Valores típicos:
+    # - 1: Solo un dispositivo (máxima seguridad)
+    # - 3-5: Múltiples dispositivos (normal)
+    # - 10+: Sin límite práctico
+    #
+    # Si un usuario supera este límite, se eliminan las sesiones más antiguas
+    max-devices: ${JWT_REFRESH_MAX_DEVICES:5}
 
 # ============================================================================
 # CONFIGURACIÓN DE RATE LIMITING

@@ -1,5 +1,6 @@
 package com.taskmanagement.api.dto;
 
+import com.taskmanagement.api.model.TaskPriority;
 import com.taskmanagement.api.model.TaskStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
@@ -118,6 +119,19 @@ public class TaskRequestDto {
         allowableValues = {"PENDING", "IN_PROGRESS", "COMPLETED", "CANCELLED"}
     )
     private TaskStatus status;
+
+    /**
+     * Prioridad de la tarea
+     * Obligatorio (por defecto MEDIUM si no se especifica)
+     */
+    @NotNull(message = "La prioridad es obligatoria")
+    @Schema(
+        description = "Prioridad de la tarea (importancia/urgencia)",
+        example = "MEDIUM",
+        requiredMode = Schema.RequiredMode.REQUIRED,
+        allowableValues = {"LOW", "MEDIUM", "HIGH", "CRITICAL"}
+    )
+    private TaskPriority priority;
 
     /**
      * Fecha límite (opcional)

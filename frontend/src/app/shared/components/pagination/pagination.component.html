@@ -1,0 +1,51 @@
+@if (page && page.totalPages > 1) {
+  <div class="pagination">
+    <div class="pagination-info">
+      Mostrando {{ page.numberOfElements }} de {{ page.totalElements }} elementos
+    </div>
+
+    <div class="pagination-controls">
+      <button
+        class="btn btn-sm btn-outline"
+        (click)="goToFirstPage()"
+        [disabled]="page.first"
+        title="Primera página">
+        ««
+      </button>
+
+      <button
+        class="btn btn-sm btn-outline"
+        (click)="goToPreviousPage()"
+        [disabled]="page.first"
+        title="Página anterior">
+        «
+      </button>
+
+      @for (pageNum of pages; track pageNum) {
+        <button
+          class="btn btn-sm"
+          [class.btn-primary]="pageNum === page.number"
+          [class.btn-outline]="pageNum !== page.number"
+          (click)="goToPage(pageNum)">
+          {{ pageNum + 1 }}
+        </button>
+      }
+
+      <button
+        class="btn btn-sm btn-outline"
+        (click)="goToNextPage()"
+        [disabled]="page.last"
+        title="Página siguiente">
+        »
+      </button>
+
+      <button
+        class="btn btn-sm btn-outline"
+        (click)="goToLastPage()"
+        [disabled]="page.last"
+        title="Última página">
+        »»
+      </button>
+    </div>
+  </div>
+}

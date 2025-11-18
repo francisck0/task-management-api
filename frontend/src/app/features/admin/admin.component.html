@@ -1,0 +1,90 @@
+<div class="container">
+  <div class="page-header">
+    <div>
+      <h1>👨‍💼 Panel de Administración</h1>
+      <p class="text-secondary">Registros de auditoría y estadísticas del sistema</p>
+    </div>
+  </div>
+
+  @if (statistics(); as stats) {
+    <div class="stats-grid mb-3">
+      <div class="stat-card">
+        <div class="stat-label">Total Operaciones</div>
+        <div class="stat-value">{{ stats.totalOperations || 0 }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Operaciones Exitosas</div>
+        <div class="stat-value text-success">{{ stats.successfulOperations || 0 }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Operaciones Fallidas</div>
+        <div class="stat-value text-danger">{{ stats.failedOperations || 0 }}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Tasa de Éxito</div>
+        <div class="stat-value">{{ stats.successRate || 0 }}%</div>
+      </div>
+    </div>
+  }
+
+  <div class="card">
+    <div class="card-header">
+      <h3>Registros de Auditoría</h3>
+    </div>
+    <div class="card-body">
+      @if (loading()) {
+        <app-loading></app-loading>
+      } @else if (error()) {
+        <div class="alert alert-danger">{{ error() }}</div>
+      } @else {
+        @if (auditLogsPage(); as page) {
+          @if (page.content.length === 0) {
+            <div class="empty-state">
+              <p class="text-secondary">No hay registros de auditoría</p>
+            </div>
+          } @else {
+            <div class="audit-table">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Usuario</th>
+                    <th>Acción</th>
+                    <th>Recurso</th>
+                    <th>Estado</th>
+                    <th>IP</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (log of page.content; track log.id) {
+                    <tr>
+                      <td>{{ log.timestamp | dateFormat }}</td>
+                      <td>{{ log.username }}</td>
+                      <td>
+                        <code>{{ log.action }}</code>
+                      </td>
+                      <td>
+                        {{ log.resource }}
+                        @if (log.resourceId) {
+                          <span class="text-secondary">#{{ log.resourceId }}</span>
+                        }
+                      </td>
+                      <td>
+                        <span class="badge" [ngClass]="getStatusClass(log.status)">
+                          {{ log.status }}
+                        </span>
+                      </td>
+                      <td class="text-secondary">{{ log.ipAddress || '-' }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+
+            <app-pagination [page]="page" (pageChange)="onPageChange($event)"></app-pagination>
+          }
+        }
+      }
+    </div>
+  </div>
+</div>

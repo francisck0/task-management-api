@@ -1,0 +1,271 @@
+name: Deploy to Environment
+
+# ============================================================================
+# TRIGGERS - Cuándo se ejecuta este workflow
+# ============================================================================
+on:
+  # Ejecución manual con selección de ambiente
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Ambiente de deployment'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      version:
+        description: 'Versión a deployar (tag de imagen Docker)'
+        required: true
+        default: 'latest'
+
+  # Auto-deploy a staging cuando se hace merge a develop
+  push:
+    branches:
+      - develop
+
+  # Auto-deploy a production cuando se crea un release
+  release:
+    types: [published]
+
+# ============================================================================
+# PERMISOS
+# ============================================================================
+permissions:
+  contents: read
+  deployments: write
+  id-token: write
+
+# ============================================================================
+# VARIABLES DE ENTORNO GLOBALES
+# ============================================================================
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+# ============================================================================
+# JOBS
+# ============================================================================
+jobs:
+  # ==========================================================================
+  # JOB 1: DETERMINAR AMBIENTE Y VERSIÓN
+  # ==========================================================================
+  prepare:
+    name: Prepare Deployment
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.set-env.outputs.environment }}
+      version: ${{ steps.set-version.outputs.version }}
+
+    steps:
+      - name: Determine environment
+        id: set-env
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "environment=${{ github.event.inputs.environment }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" == "release" ]; then
+            echo "environment=production" >> $GITHUB_OUTPUT
+          elif [ "${{ github.ref }}" == "refs/heads/develop" ]; then
+            echo "environment=staging" >> $GITHUB_OUTPUT
+          else
+            echo "environment=staging" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Determine version
+        id: set-version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" == "release" ]; then
+            echo "version=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=develop-${{ github.sha }}" >> $GITHUB_OUTPUT
+          fi
+
+  # ==========================================================================
+  # JOB 2: DEPLOY A STAGING
+  # ==========================================================================
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: prepare
+    if: needs.prepare.outputs.environment == 'staging'
+    environment:
+      name: staging
+      url: https://staging.taskmanagement.example.com
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create deployment notification
+        run: |
+          echo "### 🚀 Deploying to Staging" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ needs.prepare.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** Staging" >> $GITHUB_STEP_SUMMARY
+          echo "**Triggered by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prepare.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+
+      # ======================================================================
+      # OPCIÓN 1: Deploy usando Docker Compose (para VPS/servidor propio)
+      # ======================================================================
+      - name: Deploy with Docker Compose (ejemplo)
+        run: |
+          echo "# Este es un ejemplo de deployment con Docker Compose"
+          echo "# Descomenta y adapta según tu infraestructura"
+
+          # # 1. SSH al servidor
+          # ssh user@staging-server << 'EOF'
+          #   cd /opt/task-management-api
+          #
+          #   # 2. Pull nueva imagen
+          #   docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prepare.outputs.version }}
+          #
+          #   # 3. Update docker-compose.yml con nueva versión
+          #   sed -i 's|image:.*|image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prepare.outputs.version }}|' docker-compose.yml
+          #
+          #   # 4. Deploy con zero-downtime
+          #   docker-compose up -d --no-deps --build api
+          #
+          #   # 5. Health check
+          #   sleep 10
+          #   curl -f http://localhost:8080/actuator/health || exit 1
+          # EOF
+
+      # ======================================================================
+      # OPCIÓN 2: Deploy a Kubernetes (ejemplo)
+      # ======================================================================
+      - name: Deploy to Kubernetes (ejemplo)
+        run: |
+          echo "# Este es un ejemplo de deployment con Kubernetes"
+          echo "# Descomenta y adapta según tu cluster"
+
+          # # 1. Setup kubectl
+          # kubectl config set-cluster staging --server=${{ secrets.K8S_STAGING_SERVER }}
+          # kubectl config set-credentials staging --token=${{ secrets.K8S_STAGING_TOKEN }}
+          #
+          # # 2. Update deployment
+          # kubectl set image deployment/task-management-api \
+          #   task-management-api=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prepare.outputs.version }} \
+          #   --namespace=staging
+          #
+          # # 3. Wait for rollout
+          # kubectl rollout status deployment/task-management-api --namespace=staging
+
+      # ======================================================================
+      # OPCIÓN 3: Deploy a Cloud (AWS, Azure, GCP)
+      # ======================================================================
+      - name: Deploy to Cloud Platform (ejemplo)
+        run: |
+          echo "# Ejemplo de deployment a plataformas cloud"
+          echo "# AWS ECS, Azure Container Instances, Google Cloud Run, etc."
+          echo "# Consulta la documentación de tu proveedor cloud"
+
+      - name: Run smoke tests
+        run: |
+          echo "Ejecutando smoke tests en staging..."
+          # curl -f https://staging.taskmanagement.example.com/actuator/health
+          # curl -f https://staging.taskmanagement.example.com/api/v1/tasks
+
+  # ==========================================================================
+  # JOB 3: DEPLOY A PRODUCTION
+  # ==========================================================================
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: prepare
+    if: needs.prepare.outputs.environment == 'production'
+    environment:
+      name: production
+      url: https://taskmanagement.example.com
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create deployment notification
+        run: |
+          echo "### 🚀 Deploying to Production" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ needs.prepare.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** Production" >> $GITHUB_STEP_SUMMARY
+          echo "**Triggered by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Image:** ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prepare.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "⚠️ **IMPORTANTE:** Este deployment afecta el ambiente de producción" >> $GITHUB_STEP_SUMMARY
+
+      # ======================================================================
+      # PRODUCTION DEPLOYMENT (similar a staging pero con más validaciones)
+      # ======================================================================
+      - name: Pre-deployment validation
+        run: |
+          echo "Validando pre-requisitos para deployment a producción..."
+          # Verificar que la imagen existe
+          # Verificar health del ambiente actual
+          # Notificar al equipo
+
+      - name: Deploy to Production
+        run: |
+          echo "# Deployment a producción"
+          echo "# Usa la misma estrategia que staging pero con:"
+          echo "# - Más validaciones"
+          echo "# - Rollback automático en caso de error"
+          echo "# - Notificaciones al equipo"
+          echo "# - Monitoreo post-deployment"
+
+      - name: Post-deployment validation
+        run: |
+          echo "Validando deployment exitoso..."
+          # Health checks
+          # Smoke tests
+          # Verificar métricas
+
+      - name: Notify team
+        if: always()
+        run: |
+          echo "Notificando al equipo sobre el deployment..."
+          # Slack, Discord, email, etc.
+
+# ============================================================================
+# NOTAS DE CONFIGURACIÓN:
+# ============================================================================
+#
+# SECRETS REQUERIDOS (configurar en GitHub Settings > Secrets):
+# --------------------------------------------------------------
+#
+# Para SSH/Docker Compose:
+#   - SSH_PRIVATE_KEY: Clave SSH para acceder al servidor
+#   - STAGING_HOST: Host del servidor de staging
+#   - PRODUCTION_HOST: Host del servidor de producción
+#
+# Para Kubernetes:
+#   - K8S_STAGING_SERVER: URL del cluster de staging
+#   - K8S_STAGING_TOKEN: Token de autenticación
+#   - K8S_PRODUCTION_SERVER: URL del cluster de producción
+#   - K8S_PRODUCTION_TOKEN: Token de autenticación
+#
+# Para AWS:
+#   - AWS_ACCESS_KEY_ID
+#   - AWS_SECRET_ACCESS_KEY
+#   - AWS_REGION
+#
+# Para notificaciones:
+#   - SLACK_WEBHOOK_URL
+#   - DISCORD_WEBHOOK_URL
+#
+# ENVIRONMENTS (configurar en GitHub Settings > Environments):
+# ------------------------------------------------------------
+#
+# staging:
+#   - URL: https://staging.taskmanagement.example.com
+#   - Protection rules: Ninguna (auto-deploy)
+#
+# production:
+#   - URL: https://taskmanagement.example.com
+#   - Protection rules:
+#     - Required reviewers: 1-2 personas
+#     - Wait timer: 5 minutos (opcional)
+#     - Deployment branch: main/releases only
+#
+# ============================================================================

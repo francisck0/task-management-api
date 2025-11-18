@@ -1,9 +1,7 @@
 package com.taskmanagement.api.controller;
 
-import com.taskmanagement.api.dto.AuthResponse;
-import com.taskmanagement.api.dto.ErrorResponseDto;
-import com.taskmanagement.api.dto.LoginRequest;
-import com.taskmanagement.api.dto.RegisterRequest;
+import com.taskmanagement.api.constant.ApiVersion;
+import com.taskmanagement.api.dto.*;
 import com.taskmanagement.api.service.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -27,12 +25,16 @@ import org.springframework.web.bind.annotation.*;
  * Endpoints:
  * - POST /auth/register - Registrar nuevo usuario
  * - POST /auth/login - Autenticar usuario existente
+ * - POST /auth/refresh - Renovar access token con refresh token
+ * - POST /auth/logout - Cerrar sesión (revocar refresh token)
  *
- * IMPORTANTE: Estos endpoints son públicos (no requieren autenticación)
- * según la configuración de SecurityConfig.
+ * IMPORTANTE: Endpoints públicos (no requieren autenticación):
+ * - /auth/register
+ * - /auth/login
+ * - /auth/refresh
  */
 @RestController
-@RequestMapping("/auth")
+@RequestMapping(ApiVersion.V1 + "/auth")
 @RequiredArgsConstructor
 @Slf4j
 @Tag(
@@ -40,14 +42,19 @@ import org.springframework.web.bind.annotation.*;
     description = """
         API para autenticación y registro de usuarios.
 
-        **Flujo de autenticación JWT:**
+        **Flujo de autenticación con Refresh Tokens:**
         1. Registrar nuevo usuario o hacer login con credenciales existentes
-        2. Recibir token JWT en la respuesta
-        3. Incluir el token en todas las peticiones subsecuentes:
-           - Header: `Authorization: Bearer {token}`
-        4. El token expira en 24 horas (configurable)
+        2. Recibir access token (JWT corta duración) y refresh token (larga duración)
+        3. Incluir el access token en todas las peticiones subsecuentes:
+           - Header: `Authorization: Bearer {accessToken}`
+        4. Cuando el access token expire (401), usar refresh token para obtener uno nuevo:
+           - POST /auth/refresh con el refresh token
+        5. Recibir nuevo access token y continuar usando la aplicación
 
-        **Endpoints públicos:** No requieren autenticación
+        **Access Token:** 1 hora de duración - para acceder a recursos
+        **Refresh Token:** 7 días de duración - para renovar access token
+
+        **Endpoints públicos:** register, login, refresh
         """
 )
 public class AuthController {
@@ -225,5 +232,140 @@ public class AuthController {
         AuthResponse response = authService.login(request);
 
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Renueva un access token usando un refresh token
+     *
+     * Endpoint: POST /auth/refresh
+     */
+    @PostMapping("/refresh")
+    @Operation(
+        summary = "Renovar access token",
+        description = """
+            Renueva un access token expirado usando un refresh token válido.
+
+            **Flujo:**
+            1. Cliente detecta que el access token expiró (401 Unauthorized)
+            2. Cliente envía el refresh token a este endpoint
+            3. Backend valida el refresh token
+            4. Backend genera nuevo access token
+            5. Si la rotation está habilitada, también genera nuevo refresh token
+            6. Backend retorna ambos tokens
+
+            **Cuándo usar:**
+            - Cuando tu access token expira y recibes 401 Unauthorized
+            - Proactivamente antes de que expire (recomendado)
+
+            **Refresh Token Rotation:**
+            Si está habilitada, cada uso del refresh token genera uno nuevo
+            y el anterior se invalida. Esto mejora la seguridad detectando
+            tokens comprometidos.
+
+            **Seguridad:**
+            - Refresh tokens son de un solo uso (si rotation habilitada)
+            - Reuso de token revoca todas las sesiones del usuario
+            - Refresh tokens expiran después de 7 días
+            """
+    )
+    @ApiResponses({
+        @ApiResponse(
+            responseCode = "200",
+            description = "Tokens renovados exitosamente",
+            content = @Content(
+                mediaType = "application/json",
+                schema = @Schema(implementation = RefreshTokenResponse.class),
+                examples = @ExampleObject(
+                    value = """
+                        {
+                          "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                          "refreshToken": "660e8400-e29b-41d4-a716-446655440001",
+                          "type": "Bearer",
+                          "expiresIn": 3600000
+                        }
+                        """
+                )
+            )
+        ),
+        @ApiResponse(
+            responseCode = "401",
+            description = "Refresh token inválido o expirado",
+            content = @Content(
+                mediaType = "application/json",
+                schema = @Schema(implementation = ErrorResponseDto.class),
+                examples = @ExampleObject(
+                    value = """
+                        {
+                          "timestamp": "2025-11-16T10:30:00",
+                          "status": 401,
+                          "error": "Unauthorized",
+                          "message": "Refresh token expirado. Por favor, inicie sesión nuevamente.",
+                          "path": "/api/v1/auth/refresh"
+                        }
+                        """
+                )
+            )
+        )
+    })
+    public ResponseEntity<RefreshTokenResponse> refresh(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                description = "Refresh token obtenido durante el login o último refresh",
+                required = true,
+                content = @Content(schema = @Schema(implementation = RefreshTokenRequest.class))
+            )
+            @Valid @RequestBody RefreshTokenRequest request) {
+
+        log.info("Petición de refresh token recibida");
+
+        RefreshTokenResponse response = authService.refreshToken(request);
+
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Cierra sesión revocando el refresh token
+     *
+     * Endpoint: POST /auth/logout
+     */
+    @PostMapping("/logout")
+    @Operation(
+        summary = "Cerrar sesión (Logout)",
+        description = """
+            Cierra la sesión del usuario revocando su refresh token.
+
+            **Proceso:**
+            1. Valida el refresh token
+            2. Marca el refresh token como revocado
+            3. El refresh token ya no puede usarse para renovar access tokens
+
+            **Nota:**
+            - El access token actual seguirá siendo válido hasta que expire
+            - Para logout completo inmediato, el cliente debe eliminar ambos tokens
+            - Para cerrar todas las sesiones, usar /auth/logout-all (TODO)
+            """
+    )
+    @ApiResponses({
+        @ApiResponse(
+            responseCode = "200",
+            description = "Sesión cerrada exitosamente"
+        ),
+        @ApiResponse(
+            responseCode = "401",
+            description = "Refresh token inválido"
+        )
+    })
+    public ResponseEntity<Void> logout(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                description = "Refresh token a revocar",
+                required = true,
+                content = @Content(schema = @Schema(implementation = RefreshTokenRequest.class))
+            )
+            @Valid @RequestBody RefreshTokenRequest request) {
+
+        log.info("Petición de logout recibida");
+
+        authService.logout(request);
+
+        return ResponseEntity.ok().build();
     }
 }

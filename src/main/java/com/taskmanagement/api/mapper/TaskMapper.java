@@ -4,260 +4,222 @@ import com.taskmanagement.api.dto.TaskPatchDto;
 import com.taskmanagement.api.dto.TaskRequestDto;
 import com.taskmanagement.api.dto.TaskResponseDto;
 import com.taskmanagement.api.model.Task;
+import com.taskmanagement.api.model.User;
+import org.mapstruct.*;
 
 /**
- * Mapper para conversiones entre entidades Task y DTOs.
+ * Mapper para conversiones entre entidades Task y DTOs usando MapStruct.
  *
- * ¿POR QUÉ UN MAPPER?
- * Los Mappers son clases responsables de convertir entre diferentes representaciones
- * de datos (Entidades ↔ DTOs). Centralizan la lógica de mapeo para:
- * - Mantener el código DRY (Don't Repeat Yourself)
- * - Facilitar cambios en las conversiones
- * - Mejorar la testabilidad
- * - Separar responsabilidades (SRP - Single Responsibility Principle)
+ * ¿QUÉ ES MAPSTRUCT?
+ * MapStruct es un generador de código que crea automáticamente implementaciones
+ * de mappers en TIEMPO DE COMPILACIÓN. Esto lo hace:
+ * - ✅ MUY EFICIENTE: Sin reflexión en runtime (a diferencia de ModelMapper)
+ * - ✅ TYPE-SAFE: Errores detectados en compilación, no en runtime
+ * - ✅ RÁPIDO: Código generado tan rápido como código manual
+ * - ✅ MENOS BOILERPLATE: No necesitas escribir getters/setters manualmente
+ * - ✅ MANTENIBLE: Si cambias un DTO, el compilador te avisa
  *
- * OPCIONES DE IMPLEMENTACIÓN:
+ * VENTAJAS VS MAPPER MANUAL:
+ * - Reduce código boilerplate en ~70%
+ * - Actualizaciones automáticas si cambian los DTOs
+ * - Errores detectados en compilación
+ * - Integración perfecta con Lombok
+ * - Performance equivalente al código manual
  *
- * 1. MAPPER MANUAL (esta implementación):
- *    Ventajas:
- *    - ✅ Control total sobre las conversiones
- *    - ✅ Sin dependencias externas
- *    - ✅ Fácil de entender y debuggear
- *    - ✅ Ligero y rápido
- *    - ✅ Ideal para proyectos pequeños/medianos
+ * CÓMO FUNCIONA:
+ * 1. Defines una INTERFAZ con métodos de mapeo
+ * 2. MapStruct GENERA la implementación durante la compilación
+ * 3. Spring inyecta el mapper como un bean (@Mapper(componentModel = "spring"))
  *
- *    Desventajas:
- *    - ❌ Código manual para cada conversión
- *    - ❌ Debe actualizarse si cambian los DTOs/Entidades
+ * CONFIGURACIÓN:
+ * @Mapper: Indica que es un mapper de MapStruct
+ * - componentModel = "spring": Genera un @Component para inyección de dependencias
+ * - unmappedTargetPolicy = IGNORE: Ignora campos no mapeados (evita warnings)
+ * - nullValuePropertyMappingStrategy = IGNORE: No sobrescribe con null en PATCH
  *
- * 2. MAPSTRUCT (alternativa recomendada para proyectos grandes):
- *    Ventajas:
- *    - ✅ Generación automática de código en tiempo de compilación
- *    - ✅ Muy eficiente (sin reflexión en runtime)
- *    - ✅ Reduce código boilerplate
- *    - ✅ Detección de errores en compilación
+ * MAPEOS AUTOMÁTICOS:
+ * MapStruct mapea automáticamente campos con el MISMO NOMBRE.
+ * Ejemplo: task.title → dto.title (automático)
  *
- *    Desventajas:
- *    - ❌ Dependencia externa
- *    - ❌ Curva de aprendizaje
- *    - ❌ Puede ser overkill para proyectos simples
+ * MAPEOS PERSONALIZADOS:
+ * Usa @Mapping para mapeos custom:
+ * @Mapping(target = "userId", source = "user.id")
  *
- *    Ejemplo con MapStruct:
- *    ```java
- *    @Mapper(componentModel = "spring")
- *    public interface TaskMapper {
- *        TaskResponseDto toResponseDto(Task task);
- *        Task toEntity(TaskRequestDto dto);
- *    }
- *    ```
+ * CÓDIGO GENERADO:
+ * Durante la compilación, MapStruct genera TaskMapperImpl.java en:
+ * build/generated/sources/annotationProcessor/java/main/
  *
- * 3. MODELMAPPER (otra alternativa):
- *    Ventajas:
- *    - ✅ Mapeo automático por convención de nombres
- *    - ✅ Flexible
- *
- *    Desventajas:
- *    - ❌ Usa reflexión (más lento)
- *    - ❌ Errores en runtime en lugar de compilación
- *    - ❌ Difícil de debuggear
- *
- * DECISIÓN: Mapper manual
- * Para este proyecto usamos mapper manual porque:
- * - El proyecto es pequeño/mediano
- * - Tenemos pocos DTOs
- * - Queremos control total
- * - No queremos dependencias adicionales
- * - Es fácil migrar a MapStruct si crece el proyecto
- *
- * PATRÓN UTILIZADO:
- * - Clase utilitaria con métodos estáticos
- * - Constructor privado para prevenir instanciación
- * - Métodos nombrados consistentemente (toEntity, toResponseDto, etc.)
- * - Sin estado (stateless) - thread-safe
- *
- * USO:
+ * Ejemplo del código generado:
  * ```java
- * // En el servicio:
- * Task task = TaskMapper.toEntity(taskRequestDto);
- * TaskResponseDto response = TaskMapper.toResponseDto(savedTask);
+ * @Component
+ * public class TaskMapperImpl implements TaskMapper {
+ *     public TaskResponseDto toResponseDto(Task task) {
+ *         if (task == null) return null;
+ *         TaskResponseDto dto = new TaskResponseDto();
+ *         dto.setId(task.getId());
+ *         dto.setTitle(task.getTitle());
+ *         // ... resto de campos
+ *         return dto;
+ *     }
+ * }
  * ```
+ *
+ * USO EN SERVICIOS:
+ * ```java
+ * @Service
+ * @RequiredArgsConstructor
+ * public class TaskService {
+ *     private final TaskMapper taskMapper;  // Inyección automática
+ *
+ *     public TaskResponseDto createTask(TaskRequestDto dto) {
+ *         Task task = taskMapper.toEntity(dto);
+ *         Task saved = taskRepository.save(task);
+ *         return taskMapper.toResponseDto(saved);
+ *     }
+ * }
+ * ```
+ *
+ * DEBUGGING:
+ * Para ver el código generado por MapStruct:
+ * ./gradlew clean compileJava
+ * Luego revisar: build/generated/sources/annotationProcessor/
+ *
+ * INTEGRACIÓN CON LOMBOK:
+ * MapStruct funciona perfectamente con Lombok gracias a lombok-mapstruct-binding
+ * que incluimos en build.gradle. MapStruct puede ver los getters/setters
+ * generados por Lombok durante la compilación.
  */
-public final class TaskMapper {
-
-    /**
-     * Constructor privado para prevenir instanciación.
-     *
-     * Esta es una clase utilitaria que solo tiene métodos estáticos.
-     * No tiene sentido crear instancias de ella.
-     */
-    private TaskMapper() {
-        throw new AssertionError("TaskMapper is a utility class and should not be instantiated");
-    }
+@Mapper(
+        componentModel = "spring",  // Genera @Component para Spring DI
+        unmappedTargetPolicy = ReportingPolicy.IGNORE,  // No advertir por campos no mapeados
+        nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE  // Ignorar nulls en PATCH
+)
+public interface TaskMapper {
 
     /**
      * Convierte un TaskRequestDto a una entidad Task.
      *
      * USADO EN: Creación de tareas (POST)
      *
-     * NOTA: No mapea el ID porque es generado por la base de datos.
-     * Tampoco mapea createdAt/updatedAt porque son gestionados por auditoría.
+     * MAPEOS AUTOMÁTICOS (mismo nombre):
+     * - title → title
+     * - description → description
+     * - status → status
+     * - priority → priority
+     * - dueDate → dueDate
+     *
+     * CAMPOS IGNORADOS (se establecen después):
+     * - id: Generado por la base de datos
+     * - user: Establecido en el servicio (desde contexto de seguridad)
+     * - createdAt/updatedAt: Gestionados por @PrePersist/@PreUpdate
      *
      * @param dto DTO con los datos de entrada
-     * @return entidad Task nueva (sin ID, createdAt, updatedAt)
-     * @throws IllegalArgumentException si dto es null
+     * @return entidad Task nueva (sin ID, user, timestamps)
      */
-    public static Task toEntity(TaskRequestDto dto) {
-        if (dto == null) {
-            throw new IllegalArgumentException("TaskRequestDto cannot be null");
-        }
-
-        Task task = new Task();
-        task.setTitle(dto.getTitle());
-        task.setDescription(dto.getDescription());
-        task.setStatus(dto.getStatus());
-        task.setDueDate(dto.getDueDate());
-
-        return task;
-    }
+    @Mapping(target = "id", ignore = true)
+    @Mapping(target = "user", ignore = true)
+    @Mapping(target = "createdAt", ignore = true)
+    @Mapping(target = "updatedAt", ignore = true)
+    @Mapping(target = "deleted", ignore = true)
+    @Mapping(target = "deletedAt", ignore = true)
+    Task toEntity(TaskRequestDto dto);
 
     /**
      * Convierte una entidad Task a TaskResponseDto.
      *
      * USADO EN: Consultas y respuestas (GET, POST, PUT, PATCH)
      *
-     * Incluye todos los campos incluyendo ID y campos de auditoría.
+     * MAPEOS AUTOMÁTICOS:
+     * - id → id
+     * - title → title
+     * - description → description
+     * - status → status
+     * - priority → priority
+     * - dueDate → dueDate
+     * - createdAt → createdAt
+     * - updatedAt → updatedAt
+     * - deletedAt → deletedAt
+     *
+     * MAPEOS PERSONALIZADOS:
+     * - user.id → userId
+     * - user.username → username
+     *
+     * SEGURIDAD: Solo mapeamos userId y username, NO datos sensibles.
      *
      * @param task entidad Task
      * @return DTO de respuesta con todos los campos
-     * @throws IllegalArgumentException si task es null
      */
-    public static TaskResponseDto toResponseDto(Task task) {
-        if (task == null) {
-            throw new IllegalArgumentException("Task cannot be null");
-        }
-
-        TaskResponseDto dto = new TaskResponseDto();
-        dto.setId(task.getId());
-        dto.setTitle(task.getTitle());
-        dto.setDescription(task.getDescription());
-        dto.setStatus(task.getStatus());
-        dto.setDueDate(task.getDueDate());
-        dto.setCreatedAt(task.getCreatedAt());
-        dto.setUpdatedAt(task.getUpdatedAt());
-
-        return dto;
-    }
+    @Mapping(target = "userId", source = "user.id")
+    @Mapping(target = "username", source = "user.username")
+    @Mapping(target = "deletedAt", source = "deletedAt")
+    TaskResponseDto toResponseDto(Task task);
 
     /**
      * Actualiza una entidad Task existente con datos de TaskRequestDto.
      *
      * USADO EN: Actualización completa (PUT)
      *
-     * Actualiza TODOS los campos editables.
-     * No modifica: ID, createdAt (updatedAt se actualiza automáticamente por auditoría)
+     * @MappingTarget: Indica que task es el objeto a actualizar (no crear uno nuevo)
+     *
+     * ACTUALIZA:
+     * - title
+     * - description
+     * - status
+     * - priority
+     * - dueDate
+     *
+     * NO ACTUALIZA (ignorados):
+     * - id: No se puede cambiar
+     * - user: No se puede cambiar el propietario
+     * - createdAt: No se puede cambiar
+     * - updatedAt: Se actualiza automáticamente
      *
      * IMPORTANTE: Modifica la entidad recibida (mutable operation)
      *
      * @param task entidad Task existente a actualizar
      * @param dto DTO con los nuevos datos
-     * @return la misma entidad task actualizada (para fluent API)
-     * @throws IllegalArgumentException si task o dto son null
      */
-    public static Task updateEntityFromDto(Task task, TaskRequestDto dto) {
-        if (task == null) {
-            throw new IllegalArgumentException("Task cannot be null");
-        }
-        if (dto == null) {
-            throw new IllegalArgumentException("TaskRequestDto cannot be null");
-        }
-
-        task.setTitle(dto.getTitle());
-        task.setDescription(dto.getDescription());
-        task.setStatus(dto.getStatus());
-        task.setDueDate(dto.getDueDate());
-
-        return task;
-    }
+    @Mapping(target = "id", ignore = true)
+    @Mapping(target = "user", ignore = true)
+    @Mapping(target = "createdAt", ignore = true)
+    @Mapping(target = "updatedAt", ignore = true)
+    @Mapping(target = "deleted", ignore = true)
+    @Mapping(target = "deletedAt", ignore = true)
+    void updateEntityFromDto(@MappingTarget Task task, TaskRequestDto dto);
 
     /**
      * Actualiza parcialmente una entidad Task con datos de TaskPatchDto.
      *
      * USADO EN: Actualización parcial (PATCH)
      *
-     * Solo actualiza los campos que NO son null en el DTO.
-     * Esto permite actualizaciones parciales sin sobrescribir campos.
-     *
      * DIFERENCIA CON updateEntityFromDto:
      * - updateEntityFromDto: Actualiza TODOS los campos (PUT)
      * - patchEntityFromDto: Solo actualiza campos NO null (PATCH)
      *
+     * CONFIGURACIÓN CLAVE:
+     * nullValuePropertyMappingStrategy = IGNORE en @Mapper hace que
+     * MapStruct ignore campos null, permitiendo actualizaciones parciales.
+     *
      * EJEMPLO:
-     * Si dto solo tiene status="COMPLETED", solo se actualiza el status.
-     * Los demás campos permanecen sin cambios.
+     * Si dto solo tiene status="COMPLETED" (y resto null),
+     * solo se actualiza el status. Los demás campos permanecen sin cambios.
      *
      * IMPORTANTE: Modifica la entidad recibida (mutable operation)
      *
      * @param task entidad Task existente a actualizar
      * @param dto DTO con los campos a actualizar (solo los no-null)
-     * @return la misma entidad task actualizada (para fluent API)
-     * @throws IllegalArgumentException si task o dto son null
      */
-    public static Task patchEntityFromDto(Task task, TaskPatchDto dto) {
-        if (task == null) {
-            throw new IllegalArgumentException("Task cannot be null");
-        }
-        if (dto == null) {
-            throw new IllegalArgumentException("TaskPatchDto cannot be null");
-        }
-
-        // Solo actualizar campos que no son null
-        if (dto.getTitle() != null) {
-            task.setTitle(dto.getTitle());
-        }
-
-        if (dto.getDescription() != null) {
-            task.setDescription(dto.getDescription());
-        }
-
-        if (dto.getStatus() != null) {
-            task.setStatus(dto.getStatus());
-        }
-
-        if (dto.getDueDate() != null) {
-            task.setDueDate(dto.getDueDate());
-        }
-
-        return task;
-    }
+    @Mapping(target = "id", ignore = true)
+    @Mapping(target = "user", ignore = true)
+    @Mapping(target = "createdAt", ignore = true)
+    @Mapping(target = "updatedAt", ignore = true)
+    @Mapping(target = "deleted", ignore = true)
+    @Mapping(target = "deletedAt", ignore = true)
+    void patchEntityFromDto(@MappingTarget Task task, TaskPatchDto dto);
 
     // =========================================================================
-    // MÉTODOS ADICIONALES ÚTILES
+    // MÉTODOS DEFAULT CON LÓGICA PERSONALIZADA
     // =========================================================================
-
-    /**
-     * Copia todos los datos de una Task a otra.
-     *
-     * USADO EN: Clonación de tareas, tests, etc.
-     *
-     * Útil cuando necesitas crear una copia de una tarea.
-     * NO copia el ID ni los campos de auditoría.
-     *
-     * @param source tarea origen
-     * @param target tarea destino
-     * @return la tarea target actualizada
-     */
-    public static Task copyTaskData(Task source, Task target) {
-        if (source == null || target == null) {
-            throw new IllegalArgumentException("Source and target tasks cannot be null");
-        }
-
-        target.setTitle(source.getTitle());
-        target.setDescription(source.getDescription());
-        target.setStatus(source.getStatus());
-        target.setDueDate(source.getDueDate());
-
-        return target;
-    }
 
     /**
      * Verifica si un TaskPatchDto tiene algún campo para actualizar.
@@ -266,10 +228,13 @@ public final class TaskMapper {
      *
      * Útil para evitar actualizaciones vacías.
      *
+     * NOTA: Este es un método default porque requiere lógica custom
+     * que MapStruct no puede generar automáticamente.
+     *
      * @param dto DTO a verificar
      * @return true si al menos un campo no es null
      */
-    public static boolean hasAnyFieldToUpdate(TaskPatchDto dto) {
+    default boolean hasAnyFieldToUpdate(TaskPatchDto dto) {
         if (dto == null) {
             return false;
         }
@@ -277,6 +242,34 @@ public final class TaskMapper {
         return dto.getTitle() != null
                 || dto.getDescription() != null
                 || dto.getStatus() != null
+                || dto.getPriority() != null
                 || dto.getDueDate() != null;
+    }
+
+    /**
+     * Mapea manualmente un User a su ID para casos especiales.
+     *
+     * USADO EN: Casos donde necesitas solo el ID del usuario
+     *
+     * @AfterMapping: Se ejecuta después del mapeo principal
+     *
+     * NOTA: Este método es opcional y se puede usar cuando necesites
+     * lógica adicional después del mapeo automático.
+     *
+     * @param user usuario
+     * @return ID del usuario o null
+     */
+    default Long userToUserId(User user) {
+        return user != null ? user.getId() : null;
+    }
+
+    /**
+     * Mapea manualmente un User a su username para casos especiales.
+     *
+     * @param user usuario
+     * @return username o null
+     */
+    default String userToUsername(User user) {
+        return user != null ? user.getUsername() : null;
     }
 }

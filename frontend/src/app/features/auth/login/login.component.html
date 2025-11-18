@@ -1,0 +1,77 @@
+<div class="auth-container">
+  <div class="auth-card">
+    <div class="auth-header">
+      <h1>Iniciar Sesión</h1>
+      <p class="text-secondary">Accede a tu cuenta para gestionar tus tareas</p>
+    </div>
+
+    @if (error()) {
+      <div class="alert alert-danger">
+        {{ error() }}
+      </div>
+    }
+
+    <form [formGroup]="loginForm" (ngSubmit)="onSubmit()" class="auth-form">
+      <div class="form-group">
+        <label for="username" class="form-label">Usuario</label>
+        <input
+          type="text"
+          id="username"
+          formControlName="username"
+          class="form-control"
+          [class.error]="username?.invalid && username?.touched"
+          placeholder="Ingrese su usuario">
+        @if (username?.invalid && username?.touched) {
+          <span class="form-error">
+            @if (username?.errors?.['required']) {
+              El usuario es requerido
+            }
+            @if (username?.errors?.['minlength']) {
+              El usuario debe tener al menos 3 caracteres
+            }
+          </span>
+        }
+      </div>
+
+      <div class="form-group">
+        <label for="password" class="form-label">Contraseña</label>
+        <input
+          type="password"
+          id="password"
+          formControlName="password"
+          class="form-control"
+          [class.error]="password?.invalid && password?.touched"
+          placeholder="Ingrese su contraseña">
+        @if (password?.invalid && password?.touched) {
+          <span class="form-error">
+            @if (password?.errors?.['required']) {
+              La contraseña es requerida
+            }
+            @if (password?.errors?.['minlength']) {
+              La contraseña debe tener al menos 6 caracteres
+            }
+          </span>
+        }
+      </div>
+
+      <button
+        type="submit"
+        class="btn btn-primary w-100"
+        [disabled]="loading()">
+        @if (loading()) {
+          <span class="spinner"></span>
+          Iniciando sesión...
+        } @else {
+          Iniciar Sesión
+        }
+      </button>
+    </form>
+
+    <div class="auth-footer">
+      <p class="text-secondary">
+        ¿No tienes una cuenta?
+        <a routerLink="/auth/register" class="text-primary fw-semibold">Regístrate aquí</a>
+      </p>
+    </div>
+  </div>
+</div>
